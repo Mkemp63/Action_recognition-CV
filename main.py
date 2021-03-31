@@ -7,6 +7,8 @@ import tensorflow as tf
 from sklearn.model_selection import KFold
 from tensorflow.keras import layers, models, callbacks
 
+import config
+
 def make_baseline_model(input_shape):
     model = models.Sequential()
 
@@ -15,9 +17,11 @@ def make_baseline_model(input_shape):
     model.add(layers.Conv2D(32, (3, 3), activation='relu'))
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Conv2D(16, (3, 3), activation='relu'))
     model.add(layers.Flatten())
-    model.add(layers.Dense(32, activation='relu'))
-    model.add(layers.Dense(10))
+    model.add(layers.Dense(80, activation='relu'))
+    model.add(layers.Dense(40))
 
     model.compile(optimizer='adam',
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
@@ -76,13 +80,41 @@ def train_tests_tv(printing: bool = False):
     return set_1, set_1_label, set_2, set_2_label
 
 
-def main():
-    stanford_x_train, stanford_x_test, stanford_y_train, stanford_y_test = train_test_stanford(True)
-    tv_x_train, tv_x_test, tv_y_train, tv_y_test = train_tests_tv(True)
-	
-	input_shape = (112,112,1)
-	model = make_baseline_model(input_shape)
+def preprocess(stanford_x_imgs, save: bool = False):
+    lijst = []
+    for fileName in stanford_x_imgs:
+        img = cv2.imread(config.STANF_IMG + fileName, 0)
+        img = cv2.resize(img, (config.Image_size, config.Image_size))
+        if save:
+            cv2.imwrite(config.STANF_CONV+fileName, img)
+        lijst.append(img)
+    return lijst
 
+
+def readConvImages(imgs):
+    lijst = []
+    for fileName in imgs:
+        img = cv2.imread(config.STANF_CONV + fileName, 0)
+        lijst.append(img)
+    return lijst
+
+
+def main():
+    # train_files, train_labels, test_files, test_labels
+    stanford_train_files, stanford_train_labels, stanford_test_files, stanford_test_labels = train_test_stanford(True)
+    tv_x_train, tv_x_test, tv_y_train, tv_y_test = train_tests_tv(True)
+    input_shape = (112,112,1)
+    model = make_baseline_model(input_shape)
+    print(stanford_train_files[0])
+    # preprocess(stanford_train_files, True) # True als je ze wilt opslaan
+    # preprocess(stanford_test_files, True) # True als je ze wilt opslaan
+    if config.Use_converted:
+        stanford_train_imgs = readConvImages(stanford_train_files)
+        stanford_test_imgs = readConvImages(stanford_test_files)
+    else:
+        stanford_train_imgs = preprocess(stanford_train_files, False)
+        stanford_test_imgs = preprocess(stanford_test_files, False)
+    print("Done")
 
 if __name__ == '__main__':
     main()

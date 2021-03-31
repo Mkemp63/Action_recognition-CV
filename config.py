@@ -9,8 +9,13 @@ DECAY_DIR = os.path.join(MODELS_DIR, 'model_lr_decay')
 BIGGER_DIR = os.path.join(MODELS_DIR, 'model_bigger_nn')
 LESS_DIR = os.path.join(MODELS_DIR, 'model_less')
 
+STANF = os.path.join(ROOT_DIR, 'Data\\Stanford40\\')
+STANF_IMG = os.path.join(STANF, 'JPEGImages\\')
+STANF_CONV = os.path.join(STANF, 'ImagesConv\\')
+
 # Data information
-Image_size = 28
+Image_size = 112
+Use_converted = True
 
 # Divsision
 Validate_perc = 0.2
