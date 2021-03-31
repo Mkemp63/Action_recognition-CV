@@ -1,3 +1,31 @@
+import math
+
+import matplotlib.pyplot as plt
+import numpy as np
+import cv2
+import tensorflow as tf
+from sklearn.model_selection import KFold
+from tensorflow.keras import layers, models, callbacks
+
+def make_baseline_model(input_shape):
+    model = models.Sequential()
+
+    model.add(layers.Conv2D(16, (3, 3), activation='relu', input_shape=input_shape))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(layers.Flatten())
+    model.add(layers.Dense(32, activation='relu'))
+    model.add(layers.Dense(10))
+
+    model.compile(optimizer='adam',
+                  loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                  metrics=['accuracy'])
+
+    print(model.summary())
+    return model
+
 with open('./Data/Stanford40/ImageSplits/train.txt', 'r') as f:
     train_files = list(map(str.strip, f.readlines()))
     train_labels = ['_'.join(name.split('_')[:-1]) for name in train_files]
@@ -34,3 +62,7 @@ set_2 = [f'{classes[c]}_{i:04d}.avi' for c in range(len(classes)) for i in set_2
 set_2_label = [f'{classes[c]}' for c in range(len(classes)) for i in set_2_indices[c]]
 print(f'Set 2 to be used for train and validation ({len(set_2)}):\n\t{set_2}')
 print(f'Set 2 labels ({len(set_2_label)}):\n\t{set_2_label}')
+
+
+input_shape = (112,112,1)
+model = make_baseline_model(input_shape)
