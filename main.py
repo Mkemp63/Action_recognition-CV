@@ -1,30 +1,8 @@
-import math
-
-import matplotlib.pyplot as plt
 import numpy as np
-import cv2
 import tensorflow as tf
-from sklearn.model_selection import KFold
-from tensorflow.keras import layers, models, callbacks
+from tensorflow.keras import layers, models
 
-def make_baseline_model(input_shape):
-    model = models.Sequential()
-
-    model.add(layers.Conv2D(16, (3, 3), activation='relu', input_shape=input_shape))
-    model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
-    model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
-    model.add(layers.Flatten())
-    model.add(layers.Dense(32, activation='relu'))
-    model.add(layers.Dense(10))
-
-    model.compile(optimizer='adam',
-                  loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-                  metrics=['accuracy'])
-
-    print(model.summary())
-    return model
+import config
 
 
 def train_test_stanford(printing: bool = False):
@@ -76,12 +54,55 @@ def train_tests_tv(printing: bool = False):
     return set_1, set_1_label, set_2, set_2_label
 
 
+def make_baseline_model(input_shape):
+    model = models.Sequential()
+
+    model.add(layers.Conv2D(16, (3, 3), activation='relu', input_shape=input_shape))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(layers.Flatten())
+    model.add(layers.Dense(80, activation='relu'))
+    model.add(layers.Dense(40))
+
+    model.compile(optimizer='adam',
+                  loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                  metrics=['accuracy'])
+
+    print(model.summary())
+    return model
+
+
+def fit_model(model, train_images: np.ndarray, train_labels: np.ndarray, val_images: np.ndarray, val_labels: np.ndarray,
+              model_name: str, printing: bool = False):
+    history = model.fit(train_images, train_labels, epochs=config.Epochs,
+                        validation_data=(val_images, val_labels),
+                        batch_size=config.Batch_size)
+    if printing:
+        evaluate_model(model, val_images, val_labels)
+
+    return history, model
+
+
+def evaluate_model(model, test_images: np.ndarray, test_labels: np.ndarray):
+    test_loss, test_acc = model.evaluate(test_images, test_labels, verbose=2)
+    print(test_acc)
+
+
+def test_model(model, test_images: np.ndarray, test_labels: np.ndarray):
+    test_loss, test_acc = model.evaluate(test_images, test_labels)
+    print(f"Acc: {test_acc} & loss: {test_loss}")
+    return test_loss, test_acc
+
+
 def main():
     stanford_x_train, stanford_x_test, stanford_y_train, stanford_y_test = train_test_stanford(True)
     tv_x_train, tv_x_test, tv_y_train, tv_y_test = train_tests_tv(True)
-	
-	input_shape = (112,112,1)
-	model = make_baseline_model(input_shape)
+    input_shape = (112, 112, 1)
+    model = make_baseline_model(input_shape)
+    # model fitting (need validation images to write function call)
+    # model = fit_model(model, stanford_x_train, stanford_x_test, )
 
 
 if __name__ == '__main__':
