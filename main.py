@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import KFold
@@ -19,6 +20,13 @@ def make_baseline_model(input_shape):
     model.add(layers.Dense(80, activation='relu'))
     model.add(layers.Dense(40))
 
+    model.compile(optimizer='adam',
+                  loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                  metrics=['accuracy'])
+
+    print(model.summary())
+    return model
+
 
 def train_test_stanford(printing: bool = False):
     with open('./Data/Stanford40/ImageSplits/train.txt', 'r') as f:
@@ -38,6 +46,7 @@ def train_test_stanford(printing: bool = False):
     action_categories = sorted(list(set(['_'.join(name.split('_')[:-1]) for name in train_files])))
     if printing:
         print(f'Action categories ({len(action_categories)}):\n{action_categories}')
+
     return train_files, train_labels, test_files, test_labels
 
 
@@ -76,7 +85,11 @@ def preprocess(stanford_x_imgs, save: bool = False):
         img = cv2.resize(img, (config.Image_size, config.Image_size))
         if save:
             cv2.imwrite(config.STANF_CONV+fileName, img)
-        lijst.append(img)
+        if img is None:
+            print(f"None! {fileName}")
+        else:
+            img = img.reshape((config.Image_size, config.Image_size, 1))
+            lijst.append(img)
     return lijst
 
 
@@ -84,28 +97,44 @@ def readConvImages(imgs):
     lijst = []
     for fileName in imgs:
         img = cv2.imread(config.STANF_CONV + fileName, 0)
-        lijst.append(img)
+        if img is None:
+            print(f"None! {fileName}")
+        else:
+            img = img.reshape((config.Image_size, config.Image_size, 1))
+            lijst.append(img)
     return lijst
-	
-	
-def make_baseline_model(input_shape):
-    model = models.Sequential()
 
-    model.add(layers.Conv2D(16, (3, 3), activation='relu', input_shape=input_shape))
-    model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
-    model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
-    model.add(layers.Flatten())
-    model.add(layers.Dense(80, activation='relu'))
-    model.add(layers.Dense(40))
 
-    model.compile(optimizer='adam',
-                  loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-                  metrics=['accuracy'])
+def removeNumberAndExt(img: str):
+    return img[:-7]
 
-    print(model.summary())
-    return model
+
+def splitTrain(files, labels):
+    if len(files) != len(labels):
+        print("ERROR! Files and labels don't have the same length")
+        return
+    train_imgs , val_imgs, train_labels, val_labels = [], [], [], []
+    temp = []
+    prev_lab = removeNumberAndExt(files[0])
+    files.append("END_000.jpg")
+    for i in range(0, len(files)):
+        lab = removeNumberAndExt(files[i])
+        if lab != prev_lab:
+            aantalTrain = len(temp) - int(len(temp) * config.Validate_perc)
+            # print(f"Length for lab: {len(temp)} and number in Train: {aantalTrain}")
+            for j in temp[:aantalTrain]:
+                train_imgs.append(files[j])
+                train_labels.append(labels[j])
+            for j in temp[aantalTrain:]:
+                val_imgs.append(files[j])
+                val_labels.append(labels[j])
+
+            # for new label
+            prev_lab = lab
+            temp = [i]
+        else:
+            temp.append(i)
+    return train_imgs, np.array(train_labels), val_imgs, np.array(val_labels)
 
 
 def fit_model(model, train_images: np.ndarray, train_labels: np.ndarray, val_images: np.ndarray, val_labels: np.ndarray,
@@ -130,24 +159,44 @@ def test_model(model, test_images: np.ndarray, test_labels: np.ndarray):
     return test_loss, test_acc
 
 
+def getUniques(labels):
+    used = set()
+    unique = [x for x in labels if x not in used and (used.add(x) or True)]
+    dict = {}
+    for i in range(0, len(unique)):
+        dict[unique[i]] = np.uint8(i)
+    return unique, dict
+
+
 def main():
     # train_files, train_labels, test_files, test_labels
-    stanford_train_files, stanford_train_labels, stanford_test_files, stanford_test_labels = train_test_stanford(True)
-    tv_x_train, tv_x_test, tv_y_train, tv_y_test = train_tests_tv(True)
+    stf_train_files, stf_train_labels_S, stf_test_files, stf_test_labels = train_test_stanford(False)
+    # tv_x_train, tv_x_test, tv_y_train, tv_y_test = train_tests_tv(False)
 
     input_shape = (112,112,1)
+    uniqueLabels, dict = getUniques(stf_test_labels)
+    stf_train_labels_ind = [dict[lab] for lab in stf_train_labels_S]
+    stf_test_labels_ind = [dict[lab] for lab in stf_test_labels]
     model = make_baseline_model(input_shape)
-    print(stanford_train_files[0])
     # preprocess(stanford_train_files, True) # True als je ze wilt opslaan
     # preprocess(stanford_test_files, True) # True als je ze wilt opslaan
+    stf_train_f, stf_train_labels, stf_val_f, stf_val_labels = splitTrain(stf_train_files, stf_train_labels_ind)
     if config.Use_converted:
-        stanford_train_imgs = readConvImages(stanford_train_files)
-        stanford_test_imgs = readConvImages(stanford_test_files)
+        stf_train_imgs = np.array(readConvImages(stf_train_f))
+        stf_val_imgs = np.array(readConvImages(stf_val_f))
+        stf_test_imgs = np.array(readConvImages(stf_test_files))
     else:
-        stanford_train_imgs = preprocess(stanford_train_files, False)
-        stanford_test_imgs = preprocess(stanford_test_files, False)
+        stf_train_imgs = np.array(preprocess(stf_train_f, False))
+        stf_val_imgs = np.array(preprocess(stf_val_f, False))
+        stf_test_imgs = np.array(preprocess(stf_test_files, False))
     # model fitting (need validation images to write function call)
-    # model = fit_model(model, stanford_x_train, stanford_x_test, )
+    print("Start fitting")
+    """print(type(stf_train_imgs))     # np.array
+    print(type(stf_train_labels))   # np.array
+    print(type(stf_val_imgs[0]))    # np.array
+    print(type(stf_val_labels[0]))  # np.uint8
+    input()"""
+    history, model = fit_model(model, stf_train_imgs, stf_train_labels, stf_val_imgs, stf_val_labels, "base", printing=True)
     print("Done")
 
 	
