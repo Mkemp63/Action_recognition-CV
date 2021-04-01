@@ -18,11 +18,11 @@ Image_size = 112
 Use_converted = True
 
 # Divsision
-Validate_perc = 0.2
+Validate_perc = 0.1
 
 # Training information
 Max_epochs = 15
-Epochs = 5
+Epochs = 10
 Folds = 5
 Batch_size = 32
 Use_pretrained = True

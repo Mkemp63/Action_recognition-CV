@@ -1,30 +1,32 @@
 import cv2
 import numpy as np
 import tensorflow as tf
-from sklearn.model_selection import KFold
-from tensorflow.keras import layers, models, callbacks
+from sklearn.model_selection import GridSearchCV, PredefinedSplit, train_test_split, StratifiedShuffleSplit
+from tensorflow.keras import layers, models
 
 import config
 
-def make_baseline_model(input_shape):
+
+def make_baseline_model(input_shape, activation1='relu', activation2='relu', activation3='relu',
+                        optimizer='adam', hidden_layers=1, hidden_layer_neurons=80, conv_layers=2,
+                        filter_size=16, kernel_size=3, dropout=0):
     model = models.Sequential()
-
-    model.add(layers.Conv2D(16, (3, 3), activation='relu', input_shape=input_shape))
+    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, input_shape=input_shape))
     model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
-    model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
-    model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(16, (3, 3), activation='relu'))
+    for i in range(conv_layers):
+        model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))
+        model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))
     model.add(layers.Flatten())
-    model.add(layers.Dense(80, activation='relu'))
-    model.add(layers.Dense(40))
-
-    model.compile(optimizer='adam',
+    for i in range(hidden_layers):
+        model.add(layers.Dense(hidden_layer_neurons, activation=activation2))
+    model.add(layers.Dropout(dropout))
+    model.add(layers.Dense(40, activation=activation3))
+    model.compile(optimizer=optimizer,
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
 
-    print(model.summary())
+    # print(model.summary())
     return model
 
 
@@ -78,13 +80,16 @@ def train_tests_tv(printing: bool = False):
     return set_1, set_1_label, set_2, set_2_label
 
 
-def preprocess(stanford_x_imgs, save: bool = False):
+def preprocess(stanford_x_imgs, save: bool = False, aug: bool = True):
     lijst = []
     for fileName in stanford_x_imgs:
         img = cv2.imread(config.STANF_IMG + fileName, 0)
         img = cv2.resize(img, (config.Image_size, config.Image_size))
+        if aug and save:
+            img_flip = cv2.flip(img, 1)
+            cv2.imwrite(config.STANF_CONV + fileName[:-4] + "_flip.jpg", img_flip)
         if save:
-            cv2.imwrite(config.STANF_CONV+fileName, img)
+            cv2.imwrite(config.STANF_CONV + fileName, img)
         if img is None:
             print(f"None! {fileName}")
         else:
@@ -97,11 +102,14 @@ def readConvImages(imgs):
     lijst = []
     for fileName in imgs:
         img = cv2.imread(config.STANF_CONV + fileName, 0)
-        if img is None:
+        img2 = cv2.imread(config.STANF_CONV + fileName[:-4] + "_flip.jpg", 0)
+        if img is None or img2 is None:
             print(f"None! {fileName}")
         else:
             img = img.reshape((config.Image_size, config.Image_size, 1))
+            img2 = img2.reshape((config.Image_size, config.Image_size, 1))
             lijst.append(img)
+            lijst.append(img2)
     return lijst
 
 
@@ -113,7 +121,7 @@ def splitTrain(files, labels):
     if len(files) != len(labels):
         print("ERROR! Files and labels don't have the same length")
         return
-    train_imgs , val_imgs, train_labels, val_labels = [], [], [], []
+    train_imgs, val_imgs, train_labels, val_labels = [], [], [], []
     temp = []
     prev_lab = removeNumberAndExt(files[0])
     files.append("END_000.jpg")
@@ -168,37 +176,78 @@ def getUniques(labels):
     return unique, dict
 
 
+def double_labels(labs):
+    list = []
+    for i in labs:
+        list.append(i)
+        list.append(i)
+    return list
+
+
 def main():
     # train_files, train_labels, test_files, test_labels
     stf_train_files, stf_train_labels_S, stf_test_files, stf_test_labels = train_test_stanford(False)
     # tv_x_train, tv_x_test, tv_y_train, tv_y_test = train_tests_tv(False)
-
-    input_shape = (112,112,1)
-    uniqueLabels, dict = getUniques(stf_test_labels)
-    stf_train_labels_ind = [dict[lab] for lab in stf_train_labels_S]
-    stf_test_labels_ind = [dict[lab] for lab in stf_test_labels]
+    print(len(stf_train_files))
+    input_shape = (112, 112, 1)
+    uniqueLabels, dictionary = getUniques(stf_test_labels)
+    stf_train_labels_ind = [dictionary[lab] for lab in stf_train_labels_S]
+    stf_test_labels_ind = [dictionary[lab] for lab in stf_test_labels]
     model = make_baseline_model(input_shape)
-    # preprocess(stanford_train_files, True) # True als je ze wilt opslaan
-    # preprocess(stanford_test_files, True) # True als je ze wilt opslaan
-    stf_train_f, stf_train_labels, stf_val_f, stf_val_labels = splitTrain(stf_train_files, stf_train_labels_ind)
+    # preprocess(stf_train_files, True)  # True als je ze wilt opslaan
+    # preprocess(stf_test_files, True)  # True als je ze wilt opslaan
+
+    # stf_train_f, stf_train_labels, stf_val_f, stf_val_labels = splitTrain(stf_train_files, stf_train_labels_ind)
     if config.Use_converted:
-        stf_train_imgs = np.array(readConvImages(stf_train_f))
-        stf_val_imgs = np.array(readConvImages(stf_val_f))
+        stf_train_imgs = np.array(readConvImages(stf_train_files))
         stf_test_imgs = np.array(readConvImages(stf_test_files))
-    else:
-        stf_train_imgs = np.array(preprocess(stf_train_f, False))
-        stf_val_imgs = np.array(preprocess(stf_val_f, False))
-        stf_test_imgs = np.array(preprocess(stf_test_files, False))
+
     # model fitting (need validation images to write function call)
+    stf_train_labels = np.array(double_labels(stf_train_labels_ind))
+    stf_test_labels = np.array(double_labels(stf_test_labels_ind))
+
+    stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stf_train_imgs,
+                                                                                      stf_train_labels,
+                                                                                      test_size=config.Validate_perc,
+                                                                                      stratify=stf_train_labels)
+    activation1 = ['relu', 'sigmoid', 'tanh']
+    activation2 = ['relu', 'sigmoid', 'tanh']
+    activation3 = ['relu', 'sigmoid', 'tanh', 'softmax']
+    dropout = [0.5, 0.2, 0.0]
+    optimizer = ['adam']
+    hidden_layers = [1, 2]
+    hidden_layer_neurons = [60, 80, 100]
+    filter_size = [8, 16, 32]
+    kernel_size = [3, 5]
+    conv_layers = [0, 1, 2]
+    hyperparameters = dict(optimizer=optimizer, activation1=activation1, activation2=activation2,
+                           activation3=activation3, dropout=dropout,
+                           hidden_layers=hidden_layers, hidden_layer_neurons=hidden_layer_neurons,
+                           filter_size=filter_size, kernel_size=kernel_size,
+                           conv_layers=conv_layers, input_shape=[input_shape])
+    images_train = np.concatenate([stf_train_imgs, stf_val_imgs])
+    labels_train = np.concatenate([stf_train_labels, stf_val_labels])
+    test_fold = [-1] * len(stf_train_imgs) + [0] * len(stf_val_imgs)
+    ps = PredefinedSplit(test_fold=test_fold)
+
+    my_classifier = tf.keras.wrappers.scikit_learn.KerasClassifier(build_fn=make_baseline_model, verbose=1)
+    grid = GridSearchCV(estimator=my_classifier, param_grid=hyperparameters, verbose=2, cv=StratifiedShuffleSplit(1),
+                        refit=False)
     print("Start fitting")
-    """print(type(stf_train_imgs))     # np.array
-    print(type(stf_train_labels))   # np.array
-    print(type(stf_val_imgs[0]))    # np.array
-    print(type(stf_val_labels[0]))  # np.uint8
-    input()"""
-    history, model = fit_model(model, stf_train_imgs, stf_train_labels, stf_val_imgs, stf_val_labels, "base", printing=True)
+    model_result = model.fit(images_train, labels_train, epochs=config.Epochs,
+                           validation_data=(stf_val_imgs, stf_val_labels),
+                           batch_size=config.Batch_size)
+
+    print(test_model(model, stf_test_imgs, stf_test_labels))
+    grid_result = grid.fit(images_train, labels_train, epochs=config.Epochs,
+                           validation_data=(stf_val_imgs, stf_val_labels),
+                           batch_size=config.Batch_size)
+
+    print(grid_result.best_params_)
+    # history, model = fit_model(model, stf_train_imgs, stf_train_labels, stf_val_imgs, stf_val_labels, "base",
+    #                          printing=True)
     print("Done")
 
-	
+
 if __name__ == '__main__':
     main()
