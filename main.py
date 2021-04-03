@@ -1,10 +1,26 @@
 import cv2
 import numpy as np
 import tensorflow as tf
-from sklearn.model_selection import GridSearchCV, PredefinedSplit, train_test_split, StratifiedShuffleSplit
+from sklearn.model_selection import train_test_split, StratifiedShuffleSplit, RandomizedSearchCV
 from tensorflow.keras import layers, models
 
 import config
+
+
+def transfer_learn_model(model_path, output_layer):
+    old_model = models.load_model(model_path)
+    model = models.Sequential()
+
+    for layer in old_model.layers[:-1]:
+        model.add(layer)
+
+    for layer in model.layers:
+        layer.trainable = False
+
+    model.add(output_layer)
+    model.compile()
+    print(model.summary())
+    return model
 
 
 def make_baseline_model(input_shape, activation1='relu', activation2='relu', activation3='relu',
@@ -227,7 +243,8 @@ def main():
     test_fold = [-1] * len(stf_train_imgs) + [0] * len(stf_val_imgs)
 
     my_classifier = tf.keras.wrappers.scikit_learn.KerasClassifier(build_fn=make_baseline_model)
-    grid = GridSearchCV(estimator=my_classifier, param_grid=hyperparameters, verbose=5, cv=StratifiedShuffleSplit(1))
+    grid = RandomizedSearchCV(estimator=my_classifier, param_distributions=hyperparameters, verbose=5,
+                              cv=StratifiedShuffleSplit(1), n_iter=15)
     print("Start fitting")
     # model_result = model.fit(images_train, labels_train, epochs=config.Epochs,
     #                        validation_data=(stf_val_imgs, stf_val_labels),
