@@ -185,24 +185,19 @@ def double_labels(labs):
 
 
 def main():
-    # train_files, train_labels, test_files, test_labels
     stf_train_files, stf_train_labels_S, stf_test_files, stf_test_labels = train_test_stanford(False)
-    # tv_x_train, tv_x_test, tv_y_train, tv_y_test = train_tests_tv(False)
-    print(len(stf_train_files))
     input_shape = (112, 112, 1)
     uniqueLabels, dictionary = getUniques(stf_test_labels)
     stf_train_labels_ind = [dictionary[lab] for lab in stf_train_labels_S]
     stf_test_labels_ind = [dictionary[lab] for lab in stf_test_labels]
-    model = make_baseline_model(input_shape)
+    # run once
     # preprocess(stf_train_files, True)  # True als je ze wilt opslaan
     # preprocess(stf_test_files, True)  # True als je ze wilt opslaan
 
-    # stf_train_f, stf_train_labels, stf_val_f, stf_val_labels = splitTrain(stf_train_files, stf_train_labels_ind)
     if config.Use_converted:
         stf_train_imgs = np.array(readConvImages(stf_train_files))
         stf_test_imgs = np.array(readConvImages(stf_test_files))
 
-    # model fitting (need validation images to write function call)
     stf_train_labels = np.array(double_labels(stf_train_labels_ind))
     stf_test_labels = np.array(double_labels(stf_test_labels_ind))
 
@@ -210,6 +205,7 @@ def main():
                                                                                       stf_train_labels,
                                                                                       test_size=config.Validate_perc,
                                                                                       stratify=stf_train_labels)
+    # grid search grid
     activation1 = ['relu', 'sigmoid', 'tanh']
     activation2 = ['relu', 'sigmoid', 'tanh']
     activation3 = ['relu', 'sigmoid', 'tanh', 'softmax']
@@ -219,29 +215,28 @@ def main():
     hidden_layer_neurons = [60, 80, 100]
     filter_size = [8, 16, 32]
     kernel_size = [3, 5]
-    conv_layers = [0, 1, 2]
+    conv_layers = [0, 1]
     hyperparameters = dict(optimizer=optimizer, activation1=activation1, activation2=activation2,
                            activation3=activation3, dropout=dropout,
                            hidden_layers=hidden_layers, hidden_layer_neurons=hidden_layer_neurons,
                            filter_size=filter_size, kernel_size=kernel_size,
                            conv_layers=conv_layers, input_shape=[input_shape])
+
     images_train = np.concatenate([stf_train_imgs, stf_val_imgs])
     labels_train = np.concatenate([stf_train_labels, stf_val_labels])
     test_fold = [-1] * len(stf_train_imgs) + [0] * len(stf_val_imgs)
-    ps = PredefinedSplit(test_fold=test_fold)
 
-    my_classifier = tf.keras.wrappers.scikit_learn.KerasClassifier(build_fn=make_baseline_model, verbose=1)
-    grid = GridSearchCV(estimator=my_classifier, param_grid=hyperparameters, verbose=2, cv=StratifiedShuffleSplit(1),
-                        refit=False)
+    my_classifier = tf.keras.wrappers.scikit_learn.KerasClassifier(build_fn=make_baseline_model)
+    grid = GridSearchCV(estimator=my_classifier, param_grid=hyperparameters, verbose=5, cv=StratifiedShuffleSplit(1))
     print("Start fitting")
-    model_result = model.fit(images_train, labels_train, epochs=config.Epochs,
-                           validation_data=(stf_val_imgs, stf_val_labels),
-                           batch_size=config.Batch_size)
+    # model_result = model.fit(images_train, labels_train, epochs=config.Epochs,
+    #                        validation_data=(stf_val_imgs, stf_val_labels),
+    #                        batch_size=config.Batch_size)
 
-    print(test_model(model, stf_test_imgs, stf_test_labels))
     grid_result = grid.fit(images_train, labels_train, epochs=config.Epochs,
                            validation_data=(stf_val_imgs, stf_val_labels),
-                           batch_size=config.Batch_size)
+                           batch_size=config.Batch_size, verbose=5)
+    print(test_model(grid_result.best_estimator_, stf_test_imgs, stf_test_labels))
 
     print(grid_result.best_params_)
     # history, model = fit_model(model, stf_train_imgs, stf_train_labels, stf_val_imgs, stf_val_labels, "base",
