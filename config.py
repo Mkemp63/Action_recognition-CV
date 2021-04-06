@@ -2,16 +2,15 @@ import os
 
 # Directory information
 ROOT_DIR = os.getcwd()
-MODELS_DIR = os.path.join(ROOT_DIR, 'models\\')
-BASELINE_DIR = os.path.join(MODELS_DIR, 'model_baseline')
-DROPOUT_DIR = os.path.join(MODELS_DIR, 'model_dropout')
-DECAY_DIR = os.path.join(MODELS_DIR, 'model_lr_decay')
-BIGGER_DIR = os.path.join(MODELS_DIR, 'model_bigger_nn')
-LESS_DIR = os.path.join(MODELS_DIR, 'model_less')
 
 STANF = os.path.join(ROOT_DIR, 'Data\\Stanford40\\')
 STANF_IMG = os.path.join(STANF, 'JPEGImages\\')
 STANF_CONV = os.path.join(STANF, 'ImagesConv\\')
+STANF_CONV_CROP = os.path.join(STANF, 'ImagesConvCrop\\')
+
+TV = os.path.join(ROOT_DIR, 'Data\\TV-HI\\')
+TV_VIDEOS = os.path.join(TV, 'tv_human_interactions_videos')
+TV_VIDEOS_SLASH = os.path.join(TV, 'tv_human_interactions_videos\\')
 
 # Data information
 Image_size = 112
@@ -22,7 +21,7 @@ Validate_perc = 0.1
 
 # Training information
 Max_epochs = 15
-Epochs = 10
+Epochs = 40
 Folds = 5
 Batch_size = 32
 Use_pretrained = True
