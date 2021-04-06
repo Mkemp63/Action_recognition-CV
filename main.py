@@ -9,7 +9,7 @@ import HelperFunctions as HF
 import OpticalFlow as OptF
 
 
-def transfer_learn_model(model_path, output_layer):
+def transfer_learn_model(model_path, new_output_layer):
     old_model = models.load_model(model_path)
     model = models.Sequential()
 
@@ -19,7 +19,7 @@ def transfer_learn_model(model_path, output_layer):
     for layer in model.layers:
         layer.trainable = False
 
-    model.add(output_layer)
+    model.add(new_output_layer)
     model.compile()
     print(model.summary())
     return model
@@ -247,6 +247,7 @@ def main():
     # testOpticalFlow()
 
     stf_train_files, stf_train_labels_S, stf_test_files, stf_test_labels = train_test_stanford(False)
+    # HF.convertNew(stf_train_files, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
 
     input_shape = (config.Image_size, config.Image_size, 3)
     uniqueLabels, dictionary = HF.getUniques(stf_test_labels)
@@ -274,13 +275,13 @@ def main():
     model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
     model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
                              validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
+    model.save(config.MODELS + "Baseline.h5")
     print("Do you want to start grid search? Press any key")
     input()
 
     # Run once to get the cropped images
     # HF.convertAndCropImg(stf_train_files, True, True, config.Image_size, config.STANF_CONV_CROP)
     # HF.convertAndCropImg(stf_test_files, True, True, config.Image_size, config.STANF_CONV_CROP)
-    # HF.convertNew(stf_train_files, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
     # HF.convertNew(stf_test_files, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
     # input()
     if config.Use_converted:
@@ -308,6 +309,7 @@ def main():
     # conv = 3, neurons = 60: acc. 0.10, val_acc. 0.0838 < RANDOM, NIET REPLICEERBAAR
     model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
                                    validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
+
     print("Do you want to start grid search? Press any key")
     input()
 

@@ -12,6 +12,7 @@ TV = os.path.join(ROOT_DIR, 'Data\\TV-HI\\')
 TV_VIDEOS = os.path.join(TV, 'tv_human_interactions_videos')
 TV_VIDEOS_SLASH = os.path.join(TV, 'tv_human_interactions_videos\\')
 
+MODELS = os.path.join(ROOT_DIR, "Models\\")
 # Data information
 Image_size = 112
 Use_converted = True
