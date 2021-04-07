@@ -11,22 +11,24 @@ import OpticalFlow as OptF
 import config
 
 
-def transfer_learn_model(model_path, new_output_layer):
+def transfer_learn_model(model_path, new_output_layer, trainable: bool = False):
     old_model = models.load_model(model_path)
     model = models.Sequential()
 
     for layer in old_model.layers[:-1]:
         model.add(layer)
 
-    for layer in model.layers:
-        layer.trainable = False
+    if not trainable:
+        for layer in model.layers:
+            layer.trainable = False
 
     model.add(new_output_layer)
-    model.layers[-1].trainable = True  # sanity check
-
-    model.compile()
+    optimizer = tf.keras.optimizers.Adam(
+        learning_rate=0.0001  # 1/10th of original value (0.001), as specified by the assignment
+    )
+    model.compile(loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True), optimizer=optimizer,
+                  metrics=['accuracy'])
     print(model.summary())
-    print(model.trainable_variables)
     return model
 
 
@@ -346,12 +348,18 @@ def main():
     newImgs, labss = HF.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
     tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels = train_test_split(newImgs, labss,
                                                                                   test_size=config.Validate_perc)
+    if not os.path.isfile(config.MODELS + "TV_TL.h5"):
+        print("Model file not found, creating...")
+        tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
+        tl_model = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer, trainable=True)
+        tl_model_result = tl_model.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
+                                       validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size,)
+        tl_model.save(config.MODELS + "TV_TL.h5")
+    else:
+        print("Model file located")
+        tl_model = models.load_model(config.MODELS + "TV_TL.h5")
 
-    tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
-    tl_model = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer)
-    tl_model_result = tl_model.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
-                                   validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size)
-    tl_model.save(config.MODELS + "TV_TL.h5")
+
     print("Do you want to start grid search? Press any key")
     input()
 
