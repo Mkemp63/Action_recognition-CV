@@ -11,6 +11,9 @@ STANF_CONV_CROP = os.path.join(STANF, 'ImagesConvCrop\\')
 TV = os.path.join(ROOT_DIR, 'Data\\TV-HI\\')
 TV_VIDEOS = os.path.join(TV, 'tv_human_interactions_videos')
 TV_VIDEOS_SLASH = os.path.join(TV, 'tv_human_interactions_videos\\')
+TV_IMG = os.path.join(TV, 'Images\\')
+TV_CONV = os.path.join(TV, 'ImagesConv\\')
+TV_CONV_CROP = os.path.join(TV, 'ImagesConvCrop\\')
 
 MODELS = os.path.join(ROOT_DIR, "Models\\")
 # Data information

@@ -1,12 +1,14 @@
+import os
+
 import cv2
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split, StratifiedShuffleSplit, RandomizedSearchCV
 from tensorflow.keras import layers, models
 
-import config
 import HelperFunctions as HF
 import OpticalFlow as OptF
+import config
 
 
 def transfer_learn_model(model_path, new_output_layer):
@@ -20,8 +22,11 @@ def transfer_learn_model(model_path, new_output_layer):
         layer.trainable = False
 
     model.add(new_output_layer)
+    model.layers[-1].trainable = True  # sanity check
+
     model.compile()
     print(model.summary())
+    print(model.trainable_variables)
     return model
 
 
@@ -30,8 +35,8 @@ def make_baseline_model(input_shape, activation1='relu', activation2='relu', act
                         filter_size=16, kernel_size=3, dropout=0, output_size=40):
     model = models.Sequential()
     model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, input_shape=input_shape))
-    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))                   # 108
-    model.add(layers.MaxPooling2D((2, 2)))                                                                      # 54
+    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))  # 108
+    model.add(layers.MaxPooling2D((2, 2)))  # 54
     for i in range(conv_layers):
         model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))
         model.add(layers.MaxPooling2D((2, 2)))
@@ -53,21 +58,22 @@ def make_baseline_model(input_shape, activation1='relu', activation2='relu', act
 def makeTestModel(input_shape):
     model = models.Sequential()
 
-    model.add(layers.Convolution2D(16, (3, 3), input_shape=input_shape, activation='relu')) # 110
-    model.add(layers.Convolution2D(24, (3, 3), input_shape=input_shape, activation='relu')) # 108
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))                                        # 54
+    model.add(layers.Convolution2D(16, (3, 3), input_shape=input_shape, activation='relu'))  # 110
+    model.add(layers.Convolution2D(24, (3, 3), input_shape=input_shape, activation='relu'))  # 108
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))  # 54
 
-    model.add(layers.Convolution2D(32, (3, 3), activation='relu'))                          # 52
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))                                        # 26
-    model.add(layers.Convolution2D(32, (3, 3), activation='relu'))                          # 24
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))                                        # 12
+    model.add(layers.Convolution2D(32, (3, 3), activation='relu'))  # 52
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))  # 26
+    model.add(layers.Convolution2D(32, (3, 3), activation='relu'))  # 24
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))  # 12
 
     model.add(layers.Flatten())
     model.add(layers.Dense(128))
     model.add(layers.Activation('relu'))
 
     model.add(layers.Dense(40, activation='softmax'))
-    model.compile(loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True), optimizer='adam', metrics=['accuracy'])
+    model.compile(loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True), optimizer='adam',
+                  metrics=['accuracy'])
     print(model.summary())
     return model
 
@@ -119,10 +125,10 @@ def train_tests_tv(printing: bool = False):
     if printing:
         print(f'Set 2 to be used for train and validation ({len(set_2)}):\n\t{set_2}')
         print(f'Set 2 labels ({len(set_2_label)}):\n\t{set_2_label}')
-    return set_1, set_1_label, set_2, set_2_label
+    return set_1, set_1_label, set_2, set_2_label  # testx, testy, trainx, trainy
 
 
-def preprocess(stanford_x_imgs, save: bool = False, aug: bool = True):
+def preprocess_stanf(stanford_x_imgs, save: bool = False, aug: bool = True):
     lijst = []
     for fileName in stanford_x_imgs:
         img = cv2.imread(config.STANF_IMG + fileName, 0)
@@ -138,6 +144,24 @@ def preprocess(stanford_x_imgs, save: bool = False, aug: bool = True):
             img = img.reshape((config.Image_size, config.Image_size, 1))
             lijst.append(img)
     return lijst
+
+
+def preprocess_tv(tv_x_imgs, save: bool = False, aug: bool = True):
+    list = []
+    for filename in tv_x_imgs:
+        img = cv2.imread(config.TV_IMG + filename, 0)
+        img = cv2.resize(img, (config.Image_size, config.Image_size))
+        if aug and save:
+            img_flip = cv2.flip(img, 1)
+            cv2.imwrite(config.STANF_CONV + filename[:-4] + "_flip.jpg", img_flip)
+        if save:
+            cv2.imwrite(config.STANF_CONV + filename, img)
+        if img is None:
+            print(f"None! {filename}")
+        else:
+            img = img.reshape((config.Image_size, config.Image_size, 1))
+            list.append(img)
+    return list
 
 
 def readConvImages(imgs, cropped: bool, grayScale: bool):
@@ -188,8 +212,6 @@ def loadStanfordData():
     stf_train_labels_ind = [dictionary[lab] for lab in stf_train_labels_S]
     stf_test_labels_ind = [dictionary[lab] for lab in stf_test_labels]
 
-
-
     # Run once to get the cropped images
     # HF.convertAndCropImg(stf_train_files, True, True, config.Image_size, config.STANF_CONV_CROP)
     # HF.convertAndCropImg(stf_test_files, True, True, config.Image_size, config.STANF_CONV_CROP)
@@ -214,13 +236,34 @@ def loadStanfordData():
     test_fold = [-1] * len(stf_train_imgs) + [0] * len(stf_val_imgs)
 
 
+def video_name_to_image_name(testx, testy, trainx, trainy):
+    # very unoptimized, but it works :)
+    for i in range(len(testx)):
+        name = testx[i]
+        name = name[:-4] + ".jpg"
+        testx[i] = name
+    for i in range(len(testy)):
+        name = testy[i]
+        name = name[:-4] + ".jpg"
+        testy[i] = name
+    for i in range(len(trainx)):
+        name = trainx[i]
+        name = name[:-4] + ".jpg"
+        trainx[i] = name
+    for i in range(len(trainy)):
+        name = trainy[i]
+        name = name[:-4] + ".jpg"
+        trainy[i] = name
+    return testx, testy, trainx, trainy
+
+
 def testOpticalFlow():
     tv_test_vid, tv_test_label, tv_tr_v, tv_tr_l = train_tests_tv(True)
 
     # Iets met de shape ofzo
 
     aantal_frames = 10
-    input_shape = (config.Image_size, config.Image_size, aantal_frames*2)
+    input_shape = (config.Image_size, config.Image_size, aantal_frames * 2)
     print("Make model")
     model = make_baseline_model(input_shape, hidden_layer_neurons=60, activation3='softmax', output_size=4)
 
@@ -272,10 +315,43 @@ def main():
                                                                                       test_size=config.Validate_perc)
 
     print("Make model")
-    model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
-    model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
-                             validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
-    model.save(config.MODELS + "Baseline.h5")
+    if not os.path.isfile(config.MODELS + "Baseline.h5"):
+        print("Model file not found, creating...")
+        model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
+        model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
+                                 validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
+        model.save(config.MODELS + "Baseline.h5")
+    else:
+        print("Model file located")
+        model = models.load_model(config.MODELS + "Baseline.h5")
+
+    # Transfer learn to TV-HI data
+    HF.take_middle_frame(config.TV_VIDEOS)
+    tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = train_tests_tv()
+
+    tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = video_name_to_image_name(tv_test_files,
+                                                                                              tv_test_labels,
+                                                                                              tv_train_files,
+                                                                                              tv_train_labels)
+    input_shape = (config.Image_size, config.Image_size, 3)
+    uniqueLabels, dictionary = HF.getUniques(tv_test_labels)
+    tv_train_labels_ind = [dictionary[lab] for lab in tv_train_labels]
+    tv_test_labels_ind = [dictionary[lab] for lab in tv_test_labels]
+
+    # Run this once
+    # HF.convertAndCropImg(tv_train_files, config.TV_IMG, True, True, config.Image_size, config.TV_CONV_CROP)
+    # HF.convertAndCropImg(tv_test_files, config.TV_IMG, True, True, config.Image_size, config.TV_CONV_CROP)
+    # HF.convertNew(tv_test_files, config.TV_IMG, config.Image_size, config.TV_CONV, config.TV_CONV_CROP)
+
+    newImgs, labss = HF.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
+    tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels = train_test_split(newImgs, labss,
+                                                                                  test_size=config.Validate_perc)
+
+    tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
+    tl_model = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer)
+    tl_model_result = tl_model.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
+                                   validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size)
+    tl_model.save(config.MODELS + "TV_TL.h5")
     print("Do you want to start grid search? Press any key")
     input()
 
@@ -308,7 +384,7 @@ def main():
     model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
     # conv = 3, neurons = 60: acc. 0.10, val_acc. 0.0838 < RANDOM, NIET REPLICEERBAAR
     model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
-                                   validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
+                             validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
 
     print("Do you want to start grid search? Press any key")
     input()
@@ -347,7 +423,6 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 
 """Using lot of data augmentation: augmentImages(imgs, False, True, False, True, True, True, True)
 model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
@@ -392,10 +467,6 @@ Epoch 19/40
 Epoch 20/40
 675/675 [==============================] - 186s 275ms/step - loss: 1.1751 - accuracy: 0.6585 - val_loss: 2.4859 - val_accuracy: 0.4275
 """
-
-
-
-
 
 # OUD
 """
