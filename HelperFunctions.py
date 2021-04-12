@@ -1,9 +1,10 @@
-import numpy as np
+# import tensorflow_addons as tfa
 import os
-import math
-import tensorflow as tf
-import tensorflow_addons as tfa
+
 import cv2
+import numpy as np
+import tensorflow as tf
+
 import config
 
 
@@ -36,13 +37,23 @@ def double_labels(labs, count: int = 2):
     return list
 
 
-def convertAndCropImg(stanford_x_imgs, crop: bool, resize: bool, size: int, saveLoc: str):
-    for fileName in stanford_x_imgs:
-        img = cv2.imread(config.STANF_IMG + fileName, 0)
+def take_middle_frame(video_folder):
+    for video_file in os.listdir(video_folder):
+        video_path = config.TV_VIDEOS_SLASH + str(video_file)
+        cap = cv2.VideoCapture(video_path)
+        total_frames = cap.get(7)  # magic for taking prop-Id
+        cap.set(1, int(total_frames / 2))
+        ret, frame = cap.read()
+        cv2.imwrite(config.TV_IMG + video_file[:-4] + ".jpg", frame)
+
+
+def convertAndCropImg(x_imgs, readLoc, crop: bool, resize: bool, size: int, saveLoc: str):
+    for fileName in x_imgs:
+        img = cv2.imread(readLoc + fileName, 0)
         if img is not None:
             if crop:
                 a, b = img.shape[0], img.shape[1]
-                img = cropImg(img, min(a,b))
+                img = cropImg(img, min(a, b))
             if resize:
                 img = cv2.resize(img, (size, size))
 
@@ -54,14 +65,14 @@ def convertAndCropImg(stanford_x_imgs, crop: bool, resize: bool, size: int, save
     print("Done converting!")
 
 
-def convertNew(stanford_x_imgs, size: int, saveLoc: str = "", saveCropLoc: str = "", grayScale: bool = False):
+def convertNew(x_imgs, readLoc, size: int, saveLoc: str = "", saveCropLoc: str = "", grayScale: bool = False):
     gray = 0 if grayScale else 1
-    for fileName in stanford_x_imgs:
-        img = cv2.imread(config.STANF_IMG + fileName, gray)
+    for fileName in x_imgs:
+        img = cv2.imread(readLoc + fileName, gray)
         if img is not None:
             if len(saveCropLoc) > 2:
                 a, b = img.shape[0], img.shape[1]
-                imgc = cropImg(img, min(a,b))
+                imgc = cropImg(img, min(a, b))
                 imgc = cv2.resize(imgc, (size, size))
                 cv2.imwrite(saveCropLoc + fileName, imgc)
 
@@ -135,7 +146,7 @@ def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, h
     for i in [flip, addInvert, addGray, highBright, lowBright, lowSatur, highSatur, shiftLeftRight, shiftLeftRight]:
         if i: count += 1
     for img in imgs:
-        lijst.append(img)   # add original
+        lijst.append(img)  # add original
         if addGray:
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             lijst.append(gray)
@@ -158,10 +169,11 @@ def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, h
             ls = tf.image.adjust_saturation(img, -1)
             lijst.append(ls.numpy())
         if shiftLeftRight:
-            sl = tfa.image.translate(img, [0.1, 0], 'wrap')  # of toch 'nearest'?
-            lijst.append(sl.numpy())
-            sr = tfa.image.translate(img, [-0.2, 0], 'wrap')  # of toch 'nearest'?
-            lijst.append(sr.numpy())
+            # sl = tfa.image.translate(img, [0.1, 0], 'wrap')  # of toch 'nearest'?
+            # lijst.append(sl.numpy())
+            # sr = tfa.image.translate(img, [-0.2, 0], 'wrap')  # of toch 'nearest'?
+            # lijst.append(sr.numpy())
+            a = 1
 
     return lijst, count
 
