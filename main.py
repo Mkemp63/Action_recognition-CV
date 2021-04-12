@@ -27,16 +27,17 @@ def transfer_learn_model(model_path, output_layer):
 
 def make_baseline_model(input_shape, activation1='relu', activation2='relu', activation3='relu',
                         optimizer='adam', hidden_layers=1, hidden_layer_neurons=80, conv_layers=2,
-                        filter_size=16, kernel_size=3, dropout=0, output_size=40):
+                        filter_size=16, kernel_size=3, dropout=0, output_size=40, k_reg=None):
     model = models.Sequential()
-    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, input_shape=input_shape))
-    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))                   # 108
+    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, input_shape=input_shape,
+                            kernel_regularizer=k_reg))
+    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
     model.add(layers.MaxPooling2D((2, 2)))                                                                      # 54
     for i in range(conv_layers):
-        model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))
+        model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
         model.add(layers.MaxPooling2D((2, 2)))
     # model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))
-    model.add(layers.Conv2D(32, (kernel_size, kernel_size), activation=activation1))
+    model.add(layers.Conv2D(32, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
     model.add(layers.Flatten())
     for i in range(hidden_layers):
         model.add(layers.Dense(hidden_layer_neurons, activation=activation2))
@@ -216,13 +217,16 @@ def loadStanfordData():
 
 def testOpticalFlow():
     tv_test_vid, tv_test_label, tv_tr_v, tv_tr_l = train_tests_tv(True)
+    tv_tr_l = HF.convertLabel(tv_tr_l)
 
     # Iets met de shape ofzo
 
     aantal_frames = 10
     input_shape = (config.Image_size, config.Image_size, aantal_frames*2)
     print("Make model")
-    model = make_baseline_model(input_shape, hidden_layer_neurons=60, activation3='softmax', output_size=4)
+    kernel_regulariser = tf.keras.regularizers.l2(0.01)
+    model = make_baseline_model(input_shape, hidden_layer_neurons=60, activation3='softmax', output_size=4,
+                                k_reg=kernel_regulariser)
 
     print("Get flow data")
     flow_data = OptF.getVideosFlow(tv_tr_v, config.TV_VIDEOS_SLASH, True, config.Image_size, aantal_frames)
@@ -233,6 +237,7 @@ def testOpticalFlow():
     print(type(tv_train_l))
     print(type(tv_val))
     print(type(tv_val_l))
+    print(f"val: {tv_val_l[0]}")
     print(tv_train.shape)
     print(tv_train_l.shape)
     input()
@@ -271,7 +276,10 @@ def main():
                                                                                       test_size=config.Validate_perc)
 
     print("Make model")
-    model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
+    print(type(stf_train_labels))
+    print(stf_train_labels.shape)
+    model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax',
+                                k_reg=tf.keras.regularizers.l2(0.01))
     model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
                              validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
     print("Do you want to start grid search? Press any key")

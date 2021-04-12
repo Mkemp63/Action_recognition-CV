@@ -166,3 +166,9 @@ def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, h
     return lijst, count
 
 
+def convertLabel(lijst):
+    ans = []
+    classes = ['handShake', 'highFive', 'hug', 'kiss']
+    for l in lijst:
+        ans.append(classes.index(l))
+    return np.array(ans)
