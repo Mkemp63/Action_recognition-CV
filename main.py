@@ -3,6 +3,8 @@ import os
 import cv2
 import numpy as np
 import tensorflow as tf
+import tensorflow_addons as tfa
+from imgaug import augmenters as iaa
 from sklearn.model_selection import train_test_split, StratifiedShuffleSplit, RandomizedSearchCV
 from tensorflow.keras import layers, models
 
@@ -11,20 +13,20 @@ import OpticalFlow as OptF
 import config
 
 
-def transfer_learn_model(model_path, new_output_layer, trainable: bool = False):
+def transfer_learn_model(model_path, new_output_layer, freeze: bool = False, lr=0.0001):
     old_model = models.load_model(model_path)
     model = models.Sequential()
 
     for layer in old_model.layers[:-1]:
         model.add(layer)
 
-    if not trainable:
+    if freeze:
         for layer in model.layers:
             layer.trainable = False
 
     model.add(new_output_layer)
     optimizer = tf.keras.optimizers.Adam(
-        learning_rate=0.0001  # 1/10th of original value (0.001), as specified by the assignment
+        learning_rate=lr
     )
     model.compile(loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True), optimizer=optimizer,
                   metrics=['accuracy'])
@@ -33,20 +35,31 @@ def transfer_learn_model(model_path, new_output_layer, trainable: bool = False):
 
 
 def make_baseline_model(input_shape, activation1='relu', activation2='relu', activation3='relu',
-                        optimizer='adam', hidden_layers=1, hidden_layer_neurons=80, conv_layers=2,
-                        filter_size=16, kernel_size=3, dropout=0, output_size=40):
+                        optimizer='adam', hidden_layers: list = [60], conv_layers=2,
+                        filter_size=16, kernel_size=3, dropout=0.0, output_size=40, filter_multiplier=1,
+                        dubbel_conv: bool = True):
     model = models.Sequential()
-    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, input_shape=input_shape))
-    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))  # 108
+    if kernel_size == 5 and conv_layers == 3:
+        conv_layers = 2
+
+    if dubbel_conv:
+        model.add(layers.Conv2D(filter_size, (3, 3), activation=activation1,
+                                input_shape=input_shape))
+        model.add(layers.Conv2D(filter_size, (3, 3), activation=activation1))  # 108
+    else:
+        model.add(layers.Conv2D(filter_size, (5, 5), activation=activation1,
+                                input_shape=input_shape))
     model.add(layers.MaxPooling2D((2, 2)))  # 54
+    filter_size = int(filter_size * filter_multiplier)
     for i in range(conv_layers):
-        model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))
+        model.add(layers.Conv2D(filter_size * filter_multiplier, (kernel_size, kernel_size), activation=activation1))
         model.add(layers.MaxPooling2D((2, 2)))
+        filter_size = int(filter_size * filter_multiplier)
     # model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))
-    model.add(layers.Conv2D(32, (kernel_size, kernel_size), activation=activation1))
+    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))
     model.add(layers.Flatten())
-    for i in range(hidden_layers):
-        model.add(layers.Dense(hidden_layer_neurons, activation=activation2))
+    for i in range(len(hidden_layers)):
+        model.add(layers.Dense(hidden_layers[i], activation=activation2))
     model.add(layers.Dropout(dropout))
     model.add(layers.Dense(output_size, activation=activation3))
     model.compile(optimizer=optimizer,
@@ -78,6 +91,43 @@ def makeTestModel(input_shape):
                   metrics=['accuracy'])
     print(model.summary())
     return model
+
+
+def cyclical_learning_rate(initial_learning_rate, maximal_learning_rate, step_size, scale_fn, scale_mode,
+                           type="triangle2"):
+    if type == "cyclical":
+        clr = tfa.optimizers.CyclicalLearningRate(initial_learning_rate=initial_learning_rate,
+                                                  maximal_learning_rate=maximal_learning_rate,
+                                                  step_size=step_size,
+                                                  scale_fn=scale_fn,
+                                                  scale_mode=scale_mode)
+    elif type == "exponential":
+        clr = tfa.optimizers.ExponentialCyclicalLearningRate(initial_learning_rate=initial_learning_rate,
+                                                             maximal_learning_rate=maximal_learning_rate,
+                                                             step_size=step_size,
+                                                             scale_fn=scale_fn,
+                                                             scale_mode=scale_mode)
+    elif type == "triangle":
+        clr = tfa.optimizers.TriangularCyclicalLearningRate(initial_learning_rate=initial_learning_rate,
+                                                            maximal_learning_rate=maximal_learning_rate,
+                                                            step_size=step_size,
+                                                            scale_fn=scale_fn,
+                                                            scale_mode=scale_mode)
+    elif type == "triangle2":
+        clr = tfa.optimizers.Triangular2CyclicalLearningRate(initial_learning_rate=initial_learning_rate,
+                                                             maximal_learning_rate=maximal_learning_rate,
+                                                             step_size=step_size,
+                                                             scale_fn=scale_fn,
+                                                             scale_mode=scale_mode)
+    else:
+        print("Wrong cyclical learn rate type supplied, resorting to default")
+        clr = tfa.optimizers.CyclicalLearningRate(initial_learning_rate=initial_learning_rate,
+                                                  maximal_learning_rate=maximal_learning_rate,
+                                                  step_size=step_size,
+                                                  scale_fn=scale_fn,
+                                                  scale_mode=scale_mode)
+
+    return clr
 
 
 def train_test_stanford(printing: bool = False):
@@ -287,12 +337,47 @@ def testOpticalFlow():
     input()
 
 
+def random_search(input_shape, newImgs, labss, testImgs, testLabs):
+    # grid search grid
+    activation1 = ['relu']
+    activation2 = ['relu']
+    activation3 = ['softmax']
+    dropout = [0.5, 0.2, 0.0]
+    optimizer = ['adam']
+    hidden_layers = [[60], [40], [80], [60, 60], [60, 40], [80, 80], [80, 60], [80, 40]]
+
+    filter_size = [8, 16]
+    filter_multiplier = [1, 1.5, 2]
+    kernel_size = [3, 5]
+    conv_layers = [1, 2, 3]
+    dubbel_conv = [True, False]
+    hyperparameters = dict(optimizer=optimizer, activation1=activation1, activation2=activation2,
+                           activation3=activation3, dropout=dropout,
+                           hidden_layers=hidden_layers, filter_size=filter_size, kernel_size=kernel_size,
+                           conv_layers=conv_layers, input_shape=[input_shape], filter_multiplier=filter_multiplier,
+                           dubbel_conv=dubbel_conv)
+
+    my_classifier = tf.keras.wrappers.scikit_learn.KerasClassifier(build_fn=make_baseline_model)
+    grid = RandomizedSearchCV(estimator=my_classifier, param_distributions=hyperparameters, verbose=1,
+                              cv=StratifiedShuffleSplit(1), n_iter=45, refit=True)
+
+    grid_result = grid.fit(newImgs, labss, epochs=config.Epochs,
+                           validation_data=(testImgs, testLabs),
+                           batch_size=config.Batch_size, verbose=1)
+
+    print(test_model(grid_result.best_estimator_, testImgs, testLabs))
+    print(grid_result.best_params_)
+    # history, model = fit_model(model, stf_train_imgs, stf_train_labels, stf_val_imgs, stf_val_labels, "base",
+    #                          printing=True)
+    print("Done")
+
+
 def main():
     # Test Optical Flow
     # testOpticalFlow()
 
     stf_train_files, stf_train_labels_S, stf_test_files, stf_test_labels = train_test_stanford(False)
-    # HF.convertNew(stf_train_files, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
+    # HF.convertNew(stf_test_files, config.STANF_IMG, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
 
     input_shape = (config.Image_size, config.Image_size, 3)
     uniqueLabels, dictionary = HF.getUniques(stf_test_labels)
@@ -301,31 +386,54 @@ def main():
 
     test = False
     if test:
+        seq = iaa.Sequential([
+            iaa.TranslateX(px=(-20, 20), mode='reflect'),
+            iaa.GaussianBlur(sigma=(0, 1.5))
+        ], random_order=True).to_deterministic()
+
+        blur = iaa.GaussianBlur(sigma=(0, 1.5)).to_deterministic()
         newImgs, labss = HF.getDataSet(["applauding_004.jpg"], config.STANF_CONV_CROP, False, [1])
-        for i in newImgs:
-            print(type(i))
-            # print(i)
-            cv2.imshow("img", i)
-            cv2.waitKey(0)
+        applauding = cv2.imread(config.STANF_CONV_CROP + "applauding_004.jpg", 1)
+        img_blur = blur(image=applauding)
+
+        # img = seq(images=np.array([applauding]))
+        # print(type(img))
+        # print(img.shape)
+        cv2.imshow("img", img_blur)
+        cv2.waitKey(0)
+        # for i in img:
+        #     print(type(i))
+        #     # print(i)
+        #     cv2.imshow("img", i)
+        #     cv2.waitKey(0)
         print("DONE")
         cv2.destroyAllWindows()
-        input()
 
     print("Get DataSet")
     newImgs, labss = HF.getDataSet(stf_train_files, config.STANF_CONV_CROP, False, stf_train_labels_ind)
     stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(newImgs, labss,
                                                                                       test_size=config.Validate_perc)
 
+    # Choice task cyclical learning rate scheduler
+    clr = cyclical_learning_rate(1e-4, 1e-3, step_size=10, scale_fn=lambda x: 1, scale_mode='cycle', type="cyclical")
+    testImgs, testLabs = HF.getDataSet(stf_test_files, config.STANF_CONV_CROP, False, stf_test_labels_ind, aug=False)
+    print("start random search")
+    random_search(input_shape, newImgs, labss, testImgs, testLabs)
+
     print("Make model")
     if not os.path.isfile(config.MODELS + "Baseline.h5"):
         print("Model file not found, creating...")
-        model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
-        model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
-                                 validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
+        model = make_baseline_model(input_shape, hidden_layer_neurons=60, activation3='softmax', conv_layers=3)
+        # model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
+        #                          validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
+        model_result = model.fit(newImgs, labss, epochs=config.Epochs, validation_data=(testImgs, testLabs),
+                                 batch_size=config.Batch_size)
         model.save(config.MODELS + "Baseline.h5")
     else:
         print("Model file located")
         model = models.load_model(config.MODELS + "Baseline.h5")
+
+    test_loss, test_acc = test_model(model, testImgs, testLabs)
 
     # Transfer learn to TV-HI data
     HF.take_middle_frame(config.TV_VIDEOS)
@@ -348,17 +456,17 @@ def main():
     newImgs, labss = HF.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
     tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels = train_test_split(newImgs, labss,
                                                                                   test_size=config.Validate_perc)
+
     if not os.path.isfile(config.MODELS + "TV_TL.h5"):
         print("Model file not found, creating...")
         tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
-        tl_model = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer, trainable=True)
+        tl_model = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer, freeze=True, lr=clr)
         tl_model_result = tl_model.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
-                                       validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size,)
+                                       validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size)
         tl_model.save(config.MODELS + "TV_TL.h5")
     else:
         print("Model file located")
         tl_model = models.load_model(config.MODELS + "TV_TL.h5")
-
 
     print("Do you want to start grid search? Press any key")
     input()
@@ -368,65 +476,34 @@ def main():
     # HF.convertAndCropImg(stf_test_files, True, True, config.Image_size, config.STANF_CONV_CROP)
     # HF.convertNew(stf_test_files, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
     # input()
-    if config.Use_converted:
-        cropped_ = True
-        stf_train_imgs = np.array(readConvImages(stf_train_files, cropped=cropped_, grayScale=False))
-        stf_test_imgs = np.array(readConvImages(stf_test_files, cropped=cropped_, grayScale=False))
-
-    stf_train_labels = np.array(HF.double_labels(stf_train_labels_ind))
-    stf_test_labels = np.array(HF.double_labels(stf_test_labels_ind))
-
-    stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stf_train_imgs,
-                                                                                      stf_train_labels,
-                                                                                      test_size=config.Validate_perc,
-                                                                                      stratify=stf_train_labels)
-
-    images_train = np.concatenate([stf_train_imgs, stf_val_imgs])
-    labels_train = np.concatenate([stf_train_labels, stf_val_labels])
-    test_fold = [-1] * len(stf_train_imgs) + [0] * len(stf_val_imgs)
-    print("Start fitting")
-    # testModel = makeTestModel(input_shape)
-    # testModel.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
-    #                                validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
-    # input()
-    model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
-    # conv = 3, neurons = 60: acc. 0.10, val_acc. 0.0838 < RANDOM, NIET REPLICEERBAAR
-    model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
-                             validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
+    # if config.Use_converted:
+    #     cropped_ = True
+    #     stf_train_imgs = np.array(readConvImages(stf_train_files, cropped=cropped_, grayScale=False))
+    #     stf_test_imgs = np.array(readConvImages(stf_test_files, cropped=cropped_, grayScale=False))
+    #
+    # stf_train_labels = np.array(HF.double_labels(stf_train_labels_ind))
+    # stf_test_labels = np.array(HF.double_labels(stf_test_labels_ind))
+    #
+    # stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stf_train_imgs,
+    #                                                                                   stf_train_labels,
+    #                                                                                   test_size=config.Validate_perc,
+    #                                                                                   stratify=stf_train_labels)
+    #
+    # images_train = np.concatenate([stf_train_imgs, stf_val_imgs])
+    # labels_train = np.concatenate([stf_train_labels, stf_val_labels])
+    # test_fold = [-1] * len(stf_train_imgs) + [0] * len(stf_val_imgs)
+    # print("Start fitting")
+    # # testModel = makeTestModel(input_shape)
+    # # testModel.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
+    # #                                validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
+    # # input()
+    # model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
+    # # conv = 3, neurons = 60: acc. 0.10, val_acc. 0.0838 < RANDOM, NIET REPLICEERBAAR
+    # model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
+    #                          validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
 
     print("Do you want to start grid search? Press any key")
     input()
-
-    # grid search grid
-    activation1 = ['relu', 'sigmoid', 'tanh']
-    activation2 = ['relu', 'sigmoid', 'tanh']
-    activation3 = ['relu', 'sigmoid', 'tanh', 'softmax']
-    dropout = [0.5, 0.2, 0.0]
-    optimizer = ['adam']
-    hidden_layers = [1, 2]
-    hidden_layer_neurons = [60, 80, 100]
-    filter_size = [8, 16, 32]
-    kernel_size = [3, 5]
-    conv_layers = [0, 1]
-    hyperparameters = dict(optimizer=optimizer, activation1=activation1, activation2=activation2,
-                           activation3=activation3, dropout=dropout,
-                           hidden_layers=hidden_layers, hidden_layer_neurons=hidden_layer_neurons,
-                           filter_size=filter_size, kernel_size=kernel_size,
-                           conv_layers=conv_layers, input_shape=[input_shape])
-
-    my_classifier = tf.keras.wrappers.scikit_learn.KerasClassifier(build_fn=make_baseline_model)
-    grid = RandomizedSearchCV(estimator=my_classifier, param_distributions=hyperparameters, verbose=5,
-                              cv=StratifiedShuffleSplit(1), n_iter=15)
-
-    grid_result = grid.fit(images_train, labels_train, epochs=config.Epochs,
-                           validation_data=(stf_val_imgs, stf_val_labels),
-                           batch_size=config.Batch_size, verbose=5)
-    print(test_model(grid_result.best_estimator_, stf_test_imgs, stf_test_labels))
-
-    print(grid_result.best_params_)
-    # history, model = fit_model(model, stf_train_imgs, stf_train_labels, stf_val_imgs, stf_val_labels, "base",
-    #                          printing=True)
-    print("Done")
 
 
 if __name__ == '__main__':

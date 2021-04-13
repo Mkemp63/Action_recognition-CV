@@ -1,12 +1,12 @@
-# import tensorflow_addons as tfa
 import os
 
 import cv2
 import numpy as np
 import tensorflow as tf
+from imgaug import augmenters as iaa
+
 
 import config
-
 
 def cropImg(img, size):
     width, height = img.shape[1], img.shape[0]
@@ -131,22 +131,38 @@ def readImgs(imgs, location: str, grayScale: bool):
     return lijst
 
 
-def getDataSet(files, location: str, grayScale: bool, labels):
+def getDataSet(files, location: str, grayScale: bool, labels, aug: bool = True):
     imgs = readImgs(files, location, grayScale)
-    augmImgs, count = augmentImages(imgs, False, True, False, True, True, True, True)
-    newLabels = double_labels(labels, count)
+    if aug:
+        augmImgs, count = augmentImages(imgs, False, True, True, True, True, True, True)
+        newLabels = double_labels(labels, count)
+    else:
+        return np.array(imgs), np.array(labels)
 
     return np.array(augmImgs), np.array(newLabels)
 
 
 def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, highBright: bool,
-                  lowBright: bool, flip: bool, addInvert: bool, addGray: bool = False):
+                  lowBright: bool, flip: bool, addInvert: bool, imgaug: bool = True, addGray: bool = False):
+    blur = iaa.GaussianBlur(sigma=(0.9, 1.0)).to_deterministic()
+    tx_rechts = iaa.TranslateX(px=(19,20), mode="reflect").to_deterministic()
+    tx_links = iaa.TranslateX(px=(-19,-20), mode="reflect").to_deterministic()
+
     lijst = []
     count = 1
     for i in [flip, addInvert, addGray, highBright, lowBright, lowSatur, highSatur, shiftLeftRight, shiftLeftRight]:
         if i: count += 1
+    if imgaug:
+        count += 3
     for img in imgs:
         lijst.append(img)  # add original
+        if imgaug:
+            blur_img = blur(image=img)
+            lijst.append(blur_img)
+            tx_rechts_img = tx_rechts(image=img)
+            lijst.append(tx_rechts_img)
+            tx_links_img = tx_links(image=img)
+            lijst.append(tx_links_img)
         if addGray:
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             lijst.append(gray)
@@ -166,7 +182,7 @@ def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, h
             hs = tf.image.adjust_saturation(img, 4)
             lijst.append(hs.numpy())
         if lowSatur:
-            ls = tf.image.adjust_saturation(img, -1)
+            ls = tf.image.adjust_saturation(img, 0.5)
             lijst.append(ls.numpy())
         if shiftLeftRight:
             # sl = tfa.image.translate(img, [0.1, 0], 'wrap')  # of toch 'nearest'?
@@ -174,5 +190,6 @@ def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, h
             # sr = tfa.image.translate(img, [-0.2, 0], 'wrap')  # of toch 'nearest'?
             # lijst.append(sr.numpy())
             a = 1
+
 
     return lijst, count
