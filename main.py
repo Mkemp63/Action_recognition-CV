@@ -40,12 +40,13 @@ def make_baseline_model(input_shape, activation1='relu', activation2='relu', act
                             kernel_regularizer=k_reg))
     model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
     model.add(layers.MaxPooling2D((2, 2)))                                                                      # 54
-    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, input_shape=input_shape))
-    model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))  # 108
+    # model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, input_shape=input_shape))
+    # model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))  # 108
     model.add(layers.MaxPooling2D((2, 2)))  # 54
     for i in range(conv_layers):
         model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
         model.add(layers.MaxPooling2D((2, 2)))
+        # 108 > 54; 50 > 48; 46 >
     # model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1))
     model.add(layers.Conv2D(32, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
     model.add(layers.Flatten())
@@ -65,7 +66,7 @@ def makeTestModel(input_shape):
     model = models.Sequential()
 
     model.add(layers.Convolution2D(16, (3, 3), input_shape=input_shape, activation='relu'))  # 110
-    model.add(layers.Convolution2D(24, (3, 3), input_shape=input_shape, activation='relu'))  # 108
+    model.add(layers.Convolution2D(24, (3, 3), activation='relu'))  # 108
     model.add(layers.MaxPooling2D(pool_size=(2, 2)))  # 54
 
     model.add(layers.Convolution2D(32, (3, 3), activation='relu'))  # 52

@@ -1,4 +1,4 @@
-# import tensorflow_addons as tfa
+import tensorflow_addons as tfa
 import os
 
 import cv2
@@ -169,7 +169,7 @@ def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, h
             ls = tf.image.adjust_saturation(img, -1)
             lijst.append(ls.numpy())
         if shiftLeftRight:
-            # sl = tfa.image.translate(img, [0.1, 0], 'wrap')  # of toch 'nearest'?
+            # sl = tfa.image.translate(img, tf.constant([0.4, 0]), 'wrap')  # of toch 'nearest'?
             # lijst.append(sl.numpy())
             # sr = tfa.image.translate(img, [-0.2, 0], 'wrap')  # of toch 'nearest'?
             # lijst.append(sr.numpy())
@@ -184,3 +184,18 @@ def convertLabel(lijst):
     for l in lijst:
         ans.append(classes.index(l))
     return np.array(ans)
+
+
+imgs = cv2.imread("J:\\Python computer vision\\Action_recognition-CV\\Data\\Stanford40\\ImagesConvCrop\\applauding_001.jpg",1)
+cv2.imshow('img', imgs)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
+# poot = tf.keras.preprocessing.image.random_shift(imgs, 0.2, 0.0)
+# poot = tf.keras.preprocessing.image.random_shear(imgs, 20)
+# poot = tf.image.adjust_saturation(imgs, 0.5).numpy()
+# poot = tf.image.adjust_hue(imgs, 0.1).numpy()
+# augmImgs, count = augmentImages([imgs], True, False, False, False, False, False, False)
+poot = tfa.image.translate(imgs, tf.constant([0.5, 0])).numpy()  # of toch 'nearest'?
+cv2.imshow('img', poot)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
