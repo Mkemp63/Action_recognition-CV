@@ -11,6 +11,7 @@ from tensorflow.keras import layers, models
 import HelperFunctions as HF
 import OpticalFlow as OptF
 import config
+import data
 
 
 def transfer_learn_model(model_path, new_output_layer, freeze: bool = False, lr=0.0001):
@@ -43,54 +44,30 @@ def make_baseline_model(input_shape, activation1='relu', activation2='relu', act
         conv_layers = 2
 
     if dubbel_conv:
-        model.add(layers.Conv2D(filter_size, (3, 3), activation=activation1,
-                                input_shape=input_shape, kernel_regularizer=k_reg))
+        model.add(layers.Conv2D(filter_size, (3, 3), activation=activation1, input_shape=input_shape,
+                                kernel_regularizer=k_reg))
         model.add(layers.Conv2D(filter_size, (3, 3), activation=activation1, kernel_regularizer=k_reg))  # 108
     else:
-        model.add(layers.Conv2D(filter_size, (5, 5), activation=activation1,
-                                input_shape=input_shape, kernel_regularizer=k_reg))
+        model.add(layers.Conv2D(filter_size, (5, 5), activation=activation1, input_shape=input_shape,
+                                kernel_regularizer=k_reg))
     model.add(layers.MaxPooling2D((2, 2)))  # 54
     filter_size = int(filter_size * filter_multiplier)
     for i in range(conv_layers):
         model.add(layers.Conv2D(filter_size * filter_multiplier, (kernel_size, kernel_size), activation=activation1,
-		                    kernel_regularizer=k_reg))
+                                kernel_regularizer=k_reg))
         model.add(layers.MaxPooling2D((2, 2)))
         filter_size = int(filter_size * filter_multiplier)
     model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
-	
+
     model.add(layers.Flatten())
     for i in range(len(hidden_layers)):
         model.add(layers.Dense(hidden_layers[i], activation=activation2))
     model.add(layers.Dropout(dropout))
-	
+
     model.add(layers.Dense(output_size, activation=activation3))
-    model.compile(optimizer=optimizer,
-                  loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+    model.compile(optimizer=optimizer, loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
 
-    print(model.summary())
-    return model
-
-
-def makeTestModel(input_shape):
-    model = models.Sequential()
-
-    model.add(layers.Convolution2D(16, (3, 3), input_shape=input_shape, activation='relu'))  # 110
-    model.add(layers.Convolution2D(24, (3, 3), activation='relu'))  # 108
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))  # 54
-
-    model.add(layers.Convolution2D(32, (3, 3), activation='relu'))  # 52
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))  # 26
-    model.add(layers.Convolution2D(32, (3, 3), activation='relu'))  # 24
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))  # 12
-
-    model.add(layers.Flatten())
-    model.add(layers.Dense(128))
-    model.add(layers.Activation('relu'))
-
-    model.add(layers.Dense(40, activation='softmax'))
-    model.compile(loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True), optimizer='adam',
-                  metrics=['accuracy'])
     print(model.summary())
     return model
 
@@ -132,110 +109,6 @@ def cyclical_learning_rate(initial_learning_rate, maximal_learning_rate, step_si
     return clr
 
 
-def train_test_stanford(printing: bool = False):
-    with open('./Data/Stanford40/ImageSplits/train.txt', 'r') as f:
-        train_files = list(map(str.strip, f.readlines()))
-        train_labels = ['_'.join(name.split('_')[:-1]) for name in train_files]
-        if printing:
-            print(f'Train files ({len(train_files)}):\n\t{train_files}')
-            print(f'Train labels ({len(train_labels)}):\n\t{train_labels}\n')
-
-    with open('./Data/Stanford40/ImageSplits/test.txt', 'r') as f:
-        test_files = list(map(str.strip, f.readlines()))
-        test_labels = ['_'.join(name.split('_')[:-1]) for name in test_files]
-        if printing:
-            print(f'Test files ({len(test_files)}):\n\t{test_files}')
-            print(f'Test labels ({len(test_labels)}):\n\t{test_labels}\n')
-
-    action_categories = sorted(list(set(['_'.join(name.split('_')[:-1]) for name in train_files])))
-    if printing:
-        print(f'Action categories ({len(action_categories)}):\n{action_categories}')
-
-    return train_files, train_labels, test_files, test_labels
-
-
-def train_tests_tv(printing: bool = False):
-    set_1_indices = [
-        [2, 14, 15, 16, 18, 19, 20, 21, 24, 25, 26, 27, 28, 32, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],
-        [1, 6, 7, 8, 9, 10, 11, 12, 13, 23, 24, 25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 44, 45, 47, 48],
-        [2, 3, 4, 11, 12, 15, 16, 17, 18, 20, 21, 27, 29, 30, 31, 32, 33, 34, 35, 36, 42, 44, 46, 49, 50],
-        [1, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 22, 23, 24, 26, 29, 31, 35, 36, 38, 39, 40, 41, 42]]
-    set_2_indices = [[1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 17, 22, 23, 29, 30, 31, 33, 34, 35, 36, 37, 38, 39],
-                     [2, 3, 4, 5, 14, 15, 16, 17, 18, 19, 20, 21, 22, 26, 36, 37, 38, 39, 40, 41, 42, 43, 46, 49, 50],
-                     [1, 5, 6, 7, 8, 9, 10, 13, 14, 19, 22, 23, 24, 25, 26, 28, 37, 38, 39, 40, 41, 43, 45, 47, 48],
-                     [2, 3, 4, 5, 6, 15, 19, 20, 21, 25, 27, 28, 30, 32, 33, 34, 37, 43, 44, 45, 46, 47, 48, 49, 50]]
-    classes = ['handShake', 'highFive', 'hug', 'kiss']  # we ignore the negative class
-
-    # test set
-    set_1 = [f'{classes[c]}_{i:04d}.avi' for c in range(len(classes)) for i in set_1_indices[c]]
-    set_1_label = [f'{classes[c]}' for c in range(len(classes)) for i in set_1_indices[c]]
-    if printing:
-        print(f'Set 1 to be used for test ({len(set_1)}):\n\t{set_1}')
-        print(f'Set 1 labels ({len(set_1_label)}):\n\t{set_1_label}\n')
-
-    # training set
-    set_2 = [f'{classes[c]}_{i:04d}.avi' for c in range(len(classes)) for i in set_2_indices[c]]
-    set_2_label = [f'{classes[c]}' for c in range(len(classes)) for i in set_2_indices[c]]
-    if printing:
-        print(f'Set 2 to be used for train and validation ({len(set_2)}):\n\t{set_2}')
-        print(f'Set 2 labels ({len(set_2_label)}):\n\t{set_2_label}')
-    return set_1, set_1_label, set_2, set_2_label  # testx, testy, trainx, trainy
-
-
-def preprocess_stanf(stanford_x_imgs, save: bool = False, aug: bool = True):
-    lijst = []
-    for fileName in stanford_x_imgs:
-        img = cv2.imread(config.STANF_IMG + fileName, 0)
-        img = cv2.resize(img, (config.Image_size, config.Image_size))
-        if aug and save:
-            img_flip = cv2.flip(img, 1)
-            cv2.imwrite(config.STANF_CONV + fileName[:-4] + "_flip.jpg", img_flip)
-        if save:
-            cv2.imwrite(config.STANF_CONV + fileName, img)
-        if img is None:
-            print(f"None! {fileName}")
-        else:
-            img = img.reshape((config.Image_size, config.Image_size, 1))
-            lijst.append(img)
-    return lijst
-
-
-def preprocess_tv(tv_x_imgs, save: bool = False, aug: bool = True):
-    list = []
-    for filename in tv_x_imgs:
-        img = cv2.imread(config.TV_IMG + filename, 0)
-        img = cv2.resize(img, (config.Image_size, config.Image_size))
-        if aug and save:
-            img_flip = cv2.flip(img, 1)
-            cv2.imwrite(config.STANF_CONV + filename[:-4] + "_flip.jpg", img_flip)
-        if save:
-            cv2.imwrite(config.STANF_CONV + filename, img)
-        if img is None:
-            print(f"None! {filename}")
-        else:
-            img = img.reshape((config.Image_size, config.Image_size, 1))
-            list.append(img)
-    return list
-
-
-def readConvImages(imgs, cropped: bool, grayScale: bool):
-    lijst = []
-    gray = 0 if grayScale else 1
-    location = config.STANF_CONV_CROP if cropped else config.STANF_CONV
-    for fileName in imgs:
-        img = cv2.imread(location + fileName, gray)
-        img2 = cv2.imread(location + fileName[:-4] + "_flip.jpg", gray)
-        if img is None or img2 is None:
-            print(f"None! {fileName}")
-        else:
-            if grayScale:
-                img = img.reshape((config.Image_size, config.Image_size, 1))
-                img2 = img2.reshape((config.Image_size, config.Image_size, 1))
-            lijst.append(img)
-            lijst.append(img2)
-    return lijst
-
-
 def fit_model(model, train_images: np.ndarray, train_labels: np.ndarray, val_images: np.ndarray, val_labels: np.ndarray,
               model_name: str, printing: bool = False):
     history = model.fit(train_images, train_labels, epochs=config.Epochs,
@@ -256,38 +129,6 @@ def test_model(model, test_images: np.ndarray, test_labels: np.ndarray):
     test_loss, test_acc = model.evaluate(test_images, test_labels)
     print(f"Acc: {test_acc} & loss: {test_loss}")
     return test_loss, test_acc
-
-
-def loadStanfordData():
-    stf_train_files, stf_train_labels_S, stf_test_files, stf_test_labels = train_test_stanford(False)
-
-    input_shape = (112, 112, 3)
-    uniqueLabels, dictionary = HF.getUniques(stf_test_labels)
-    stf_train_labels_ind = [dictionary[lab] for lab in stf_train_labels_S]
-    stf_test_labels_ind = [dictionary[lab] for lab in stf_test_labels]
-
-    # Run once to get the cropped images
-    # HF.convertAndCropImg(stf_train_files, True, True, config.Image_size, config.STANF_CONV_CROP)
-    # HF.convertAndCropImg(stf_test_files, True, True, config.Image_size, config.STANF_CONV_CROP)
-    # HF.convertNew(stf_train_files, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
-    # HF.convertNew(stf_test_files, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
-    # input()
-    if config.Use_converted:
-        cropped_ = True
-        stf_train_imgs = np.array(readConvImages(stf_train_files, cropped=cropped_, grayScale=False))
-        stf_test_imgs = np.array(readConvImages(stf_test_files, cropped=cropped_, grayScale=False))
-
-    stf_train_labels = np.array(HF.double_labels(stf_train_labels_ind))
-    stf_test_labels = np.array(HF.double_labels(stf_test_labels_ind))
-
-    stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stf_train_imgs,
-                                                                                      stf_train_labels,
-                                                                                      test_size=config.Validate_perc,
-                                                                                      stratify=stf_train_labels)
-
-    images_train = np.concatenate([stf_train_imgs, stf_val_imgs])
-    labels_train = np.concatenate([stf_train_labels, stf_val_labels])
-    test_fold = [-1] * len(stf_train_imgs) + [0] * len(stf_val_imgs)
 
 
 def video_name_to_image_name(testx, testy, trainx, trainy):
@@ -312,7 +153,7 @@ def video_name_to_image_name(testx, testy, trainx, trainy):
 
 
 def testOpticalFlow():
-    tv_test_vid, tv_test_label, tv_tr_v, tv_tr_l = train_tests_tv(True)
+    tv_test_vid, tv_test_label, tv_tr_v, tv_tr_l = data.train_tests_tv(True)
     tv_tr_l = HF.convertLabel(tv_tr_l)
 
     # Iets met de shape ofzo
@@ -378,83 +219,112 @@ def random_search(input_shape, newImgs, labss, testImgs, testLabs):
     print("Done")
 
 
+# Testing image augmentation
+def test():
+    seq = iaa.Sequential([
+        iaa.TranslateX(px=(-20, 20), mode='reflect'),
+        iaa.GaussianBlur(sigma=(0, 1.5))
+    ], random_order=True).to_deterministic()
+
+    blur = iaa.GaussianBlur(sigma=(0, 1.5)).to_deterministic()
+    newImgs, labss = HF.getDataSet(["applauding_004.jpg"], config.STANF_CONV_CROP, False, [1])
+    applauding = cv2.imread(config.STANF_CONV_CROP + "applauding_004.jpg", 1)
+    img_blur = blur(image=applauding)
+
+    # img = seq(images=np.array([applauding]))
+    # print(type(img))
+    # print(img.shape)
+    cv2.imshow("img", img_blur)
+    cv2.waitKey(0)
+    # for i in img:
+    #     print(type(i))
+    #     # print(i)
+    #     cv2.imshow("img", i)
+    #     cv2.waitKey(0)
+    print("DONE")
+    cv2.destroyAllWindows()
+
+
+def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, input_shape):
+    # Make first model
+    print("Making the first model...")
+    # Variabelen moeten wel aangepast worden waarschijnlijk
+    model_base = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
+    hist_base, model_base = model_base.fit(stanf_train, stanf_train_lab, validation_data=(stanf_test, stanf_test_lab),
+                                           epochs=config.Epochs, batch_size=config.Batch_size)
+    test_loss_base, test_acc_base = model_base.evaluate(stanf_test, stanf_test_lab)
+    print(f"Test acc: {test_acc_base} & loss: {test_loss_base}")
+
+    # Plot test loss and accuracy
+
+    # Make second model, based on transfer learning
+    print("Making the second model...")
+    # transferlearn model
+    # Plot test loss and accuracy
+
+    # Make third model, etc..
+    print("Making the third model...")
+    # Plot test loss and accuracy
+
+
+    # Make fourth model, etc..
+    print("Making the fourth model...")
+    # Plot test loss and accuracy
+
+
+    print()
+
+
 def main():
+    input_shape = (config.Image_size, config.Image_size, 3)
     # Test Optical Flow
     # testOpticalFlow()
 
-    stf_train_files, stf_train_labels_S, stf_test_files, stf_test_labels = train_test_stanford(False)
-    # HF.convertNew(stf_test_files, config.STANF_IMG, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
-
-    input_shape = (config.Image_size, config.Image_size, 3)
-    uniqueLabels, dictionary = HF.getUniques(stf_test_labels)
-    stf_train_labels_ind = [dictionary[lab] for lab in stf_train_labels_S]
-    stf_test_labels_ind = [dictionary[lab] for lab in stf_test_labels]
-
-    test = False
-    if test:
-        seq = iaa.Sequential([
-            iaa.TranslateX(px=(-20, 20), mode='reflect'),
-            iaa.GaussianBlur(sigma=(0, 1.5))
-        ], random_order=True).to_deterministic()
-
-        blur = iaa.GaussianBlur(sigma=(0, 1.5)).to_deterministic()
-        newImgs, labss = HF.getDataSet(["applauding_004.jpg"], config.STANF_CONV_CROP, False, [1])
-        applauding = cv2.imread(config.STANF_CONV_CROP + "applauding_004.jpg", 1)
-        img_blur = blur(image=applauding)
-
-        # img = seq(images=np.array([applauding]))
-        # print(type(img))
-        # print(img.shape)
-        cv2.imshow("img", img_blur)
-        cv2.waitKey(0)
-        # for i in img:
-        #     print(type(i))
-        #     # print(i)
-        #     cv2.imshow("img", i)
-        #     cv2.waitKey(0)
-        print("DONE")
-        cv2.destroyAllWindows()
-
+    # stf_trainset: whole training set (incl. val); stf_train_imgs: only training (excl val)
     print("Get DataSet")
-    newImgs, labss = HF.getDataSet(stf_train_files, config.STANF_CONV_CROP, False, stf_train_labels_ind)
-    stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(newImgs, labss,
+    stf_trainset, stf_trainset_lab, stf_test, stf_test_lab = data.getStanfordData()
+    stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stf_trainset, stf_trainset_lab,
                                                                                       test_size=config.Validate_perc)
+
+    # Function to train and make the four models
+    makeModelsFinal(stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, input_shape)
+
+    # Test the different forms of augmentation
+    # test()
 
     # Choice task cyclical learning rate scheduler
     clr = cyclical_learning_rate(1e-4, 1e-3, step_size=10, scale_fn=lambda x: 1, scale_mode='cycle', type="cyclical")
-    testImgs, testLabs = HF.getDataSet(stf_test_files, config.STANF_CONV_CROP, False, stf_test_labels_ind, aug=False)
     print("start random search")
-    random_search(input_shape, newImgs, labss, testImgs, testLabs)
+    random_search(input_shape, stf_trainset, stf_trainset_lab, stf_test, stf_test_lab)
 
     print("Make model")
     # model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax',
     #                             k_reg=tf.keras.regularizers.l2(0.01))
     # model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
     #                          validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
-	
+
     if not os.path.isfile(config.MODELS + "Baseline.h5"):
         print("Model file not found, creating...")
         model = make_baseline_model(input_shape, hidden_layer_neurons=60, activation3='softmax', conv_layers=3)
         # model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
         #                          validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
-        model_result = model.fit(newImgs, labss, epochs=config.Epochs, validation_data=(testImgs, testLabs),
-                                 batch_size=config.Batch_size)
+        model_result = model.fit(stf_trainset, stf_trainset_lab, validation_data=(stf_test, stf_test_lab),
+                                 epochs=config.Epochs, batch_size=config.Batch_size)
         model.save(config.MODELS + "Baseline.h5")
     else:
         print("Model file located")
         model = models.load_model(config.MODELS + "Baseline.h5")
 
-    test_loss, test_acc = test_model(model, testImgs, testLabs)
+    test_loss, test_acc = test_model(model, stf_test, stf_test_lab)
 
     # Transfer learn to TV-HI data
     HF.take_middle_frame(config.TV_VIDEOS)
-    tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = train_tests_tv()
+    tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = data.train_tests_tv()
 
     tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = video_name_to_image_name(tv_test_files,
                                                                                               tv_test_labels,
                                                                                               tv_train_files,
                                                                                               tv_train_labels)
-    input_shape = (config.Image_size, config.Image_size, 3)
     uniqueLabels, dictionary = HF.getUniques(tv_test_labels)
     tv_train_labels_ind = [dictionary[lab] for lab in tv_train_labels]
     tv_test_labels_ind = [dictionary[lab] for lab in tv_test_labels]
@@ -504,16 +374,11 @@ def main():
     # labels_train = np.concatenate([stf_train_labels, stf_val_labels])
     # test_fold = [-1] * len(stf_train_imgs) + [0] * len(stf_val_imgs)
     # print("Start fitting")
-    # # testModel = makeTestModel(input_shape)
-    # # testModel.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
-    # #                                validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
-    # # input()
     # model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
     # # conv = 3, neurons = 60: acc. 0.10, val_acc. 0.0838 < RANDOM, NIET REPLICEERBAAR
     # model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
     #                          validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
 
-    print("Do you want to start grid search? Press any key")
     input()
 
 
