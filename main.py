@@ -1,6 +1,7 @@
 import os
 
 import cv2
+import joblib
 import numpy as np
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -35,10 +36,9 @@ def transfer_learn_model(model_path, new_output_layer, freeze: bool = False, lr=
     return model
 
 
-def make_baseline_model(input_shape, activation1='relu', activation2='relu', activation3='relu',
-                        optimizer='adam', hidden_layers: list = [60], conv_layers=2,
-                        filter_size=16, kernel_size=3, dropout=0.0, output_size=40, filter_multiplier=1,
-                        dubbel_conv: bool = True, k_reg=None):
+def make_baseline_model(input_shape, hidden_layers, activation1='relu', activation2='relu', activation3='relu',
+                        optimizer='adam', conv_layers=2, filter_size=16, kernel_size=3, dropout=0.0, output_size=40,
+                        filter_multiplier=1, dubbel_conv: bool = True, k_reg=None):
     model = models.Sequential()
     if kernel_size == 5 and conv_layers == 3:
         conv_layers = 2
@@ -58,12 +58,10 @@ def make_baseline_model(input_shape, activation1='relu', activation2='relu', act
         model.add(layers.MaxPooling2D((2, 2)))
         filter_size = int(filter_size * filter_multiplier)
     model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
-
     model.add(layers.Flatten())
-    for i in range(len(hidden_layers)):
-        model.add(layers.Dense(hidden_layers[i], activation=activation2))
+    model.add(layers.Dense(hidden_layers, activation=activation2))
+    model.add(layers.Dense(hidden_layers, activation=activation2))
     model.add(layers.Dropout(dropout))
-
     model.add(layers.Dense(output_size, activation=activation3))
     model.compile(optimizer=optimizer, loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
@@ -184,14 +182,15 @@ def testOpticalFlow():
     input()
 
 
-def random_search(input_shape, newImgs, labss, testImgs, testLabs):
+def random_search(input_shape, newImgs, labss, testImgs, testLabs, n_iter=45):
     # grid search grid
     activation1 = ['relu']
     activation2 = ['relu']
     activation3 = ['softmax']
     dropout = [0.5, 0.2, 0.0]
     optimizer = ['adam']
-    hidden_layers = [[60], [40], [80], [60, 60], [60, 40], [80, 80], [80, 60], [80, 40]]
+    hidden_layers = [60]
+    hidden_layers2 = [[60], [40], [80], [60, 60], [60, 40], [80, 80], [80, 60], [80, 40]]
 
     filter_size = [8, 16]
     filter_multiplier = [1, 1.5, 2]
@@ -206,17 +205,28 @@ def random_search(input_shape, newImgs, labss, testImgs, testLabs):
 
     my_classifier = tf.keras.wrappers.scikit_learn.KerasClassifier(build_fn=make_baseline_model)
     grid = RandomizedSearchCV(estimator=my_classifier, param_distributions=hyperparameters, verbose=1,
-                              cv=StratifiedShuffleSplit(1), n_iter=45, refit=True)
+                              cv=StratifiedShuffleSplit(1), n_iter=n_iter, refit=True)
 
     grid_result = grid.fit(newImgs, labss, epochs=config.Epochs,
                            validation_data=(testImgs, testLabs),
                            batch_size=config.Batch_size, verbose=1)
+    # joblib.dump(grid, 'random_search.pkl')
+    # joblib.load('random_search.pkl')
+    print("Done")
+    print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
+    print(" ")
+    print("All fits: ")
+    means = grid_result.cv_results_['mean_test_score']
+    stds = grid_result.cv_results_['std_test_score']
+    params = grid_result.cv_results_['params']
+    for mean, stdev, param in zip(means, stds, params):
+        print("%f (%f) with: %r" % (mean, stdev, param))
 
-    print(test_model(grid_result.best_estimator_, testImgs, testLabs))
-    print(grid_result.best_params_)
+    _, _ = test_model(grid.best_estimator_, testImgs, testLabs)
+
     # history, model = fit_model(model, stf_train_imgs, stf_train_labels, stf_val_imgs, stf_val_labels, "base",
     #                          printing=True)
-    print("Done")
+    input("press any key to continue...")
 
 
 # Testing image augmentation
@@ -266,11 +276,9 @@ def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, in
     print("Making the third model...")
     # Plot test loss and accuracy
 
-
     # Make fourth model, etc..
     print("Making the fourth model...")
     # Plot test loss and accuracy
-
 
     print()
 
@@ -287,7 +295,7 @@ def main():
                                                                                       test_size=config.Validate_perc)
 
     # Function to train and make the four models
-    makeModelsFinal(stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, input_shape)
+    # makeModelsFinal(stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, input_shape)
 
     # Test the different forms of augmentation
     # test()
@@ -295,7 +303,7 @@ def main():
     # Choice task cyclical learning rate scheduler
     clr = cyclical_learning_rate(1e-4, 1e-3, step_size=10, scale_fn=lambda x: 1, scale_mode='cycle', type="cyclical")
     print("start random search")
-    random_search(input_shape, stf_trainset, stf_trainset_lab, stf_test, stf_test_lab)
+    random_search(input_shape, stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, n_iter=10)
 
     print("Make model")
     # model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax',

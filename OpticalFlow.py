@@ -184,31 +184,31 @@ def getVideosFlow(files, location: str, crop: bool, size: int,  count: int = 10)
 # calcOpticalFlow("J:\\Python computer vision\\Action_recognition-CV\\Data\\TV-HI\\tv_human_interactions_videos\\",
 #                 "kiss_0045.avi", True, True)
 # convertVideos("tv_human_interactions_videos", config.Image_size)
-
-ans = getOpticalFlowVideo("J:\\Python computer vision\\Action_recognition-CV\\Data\\TV-HI\\tv_human_interactions_videos\\",
-                           "kiss_0045.avi", 10, True, 112)
-ans2 = getOpticalFlowVideo("J:\\Python computer vision\\Action_recognition-CV\\Data\\TV-HI\\tv_human_interactions_videos\\",
-                           "kiss_0045.avi", 10, True, 112, addEffect=True)
-thresh = 0.0001
-maxDif = 0.0
-for ind in range(0, len(ans)):
-    differentOnes = 0
-    averageDiff = 0
-    for row in range(0, ans[ind].shape[0]):
-        for col in range(0, ans[ind].shape[1]):
-            a = ans[ind][row][col]
-            b = ans2[ind][row][col]
-            if a != b:
-                differentOnes += 1
-                df = abs(a - b)
-                averageDiff += df
-                # if df > thresh:
-                #     print(f"a: {a}, b: {b}")
-                if df > maxDif:
-                    maxDif = df
-    total = ans[ind].shape[0] * ans[ind].shape[1]
-    print(f"Different: {differentOnes} with avg. {averageDiff/total}")
-print(f"maxDif: {maxDif}")
+#
+# ans = getOpticalFlowVideo("J:\\Python computer vision\\Action_recognition-CV\\Data\\TV-HI\\tv_human_interactions_videos\\",
+#                            "kiss_0045.avi", 10, True, 112)
+# ans2 = getOpticalFlowVideo("J:\\Python computer vision\\Action_recognition-CV\\Data\\TV-HI\\tv_human_interactions_videos\\",
+#                            "kiss_0045.avi", 10, True, 112, addEffect=True)
+# thresh = 0.0001
+# maxDif = 0.0
+# for ind in range(0, len(ans)):
+#     differentOnes = 0
+#     averageDiff = 0
+#     for row in range(0, ans[ind].shape[0]):
+#         for col in range(0, ans[ind].shape[1]):
+#             a = ans[ind][row][col]
+#             b = ans2[ind][row][col]
+#             if a != b:
+#                 differentOnes += 1
+#                 df = abs(a - b)
+#                 averageDiff += df
+#                 # if df > thresh:
+#                 #     print(f"a: {a}, b: {b}")
+#                 if df > maxDif:
+#                     maxDif = df
+#     total = ans[ind].shape[0] * ans[ind].shape[1]
+#     print(f"Different: {differentOnes} with avg. {averageDiff/total}")
+# print(f"maxDif: {maxDif}")
 
 # print(type(ans))
 # print(type(ans[0]))
