@@ -1,8 +1,9 @@
 import os
 
 import cv2
-import joblib
+import matplotlib.pyplot as plt
 import numpy as np
+import sklearn
 import tensorflow as tf
 import tensorflow_addons as tfa
 from imgaug import augmenters as iaa
@@ -13,7 +14,6 @@ import HelperFunctions as HF
 import OpticalFlow as OptF
 import config
 import data
-import fusion
 
 
 def transfer_learn_model(model_path, new_output_layer, freeze: bool = False, lr=0.0001):
@@ -37,7 +37,7 @@ def transfer_learn_model(model_path, new_output_layer, freeze: bool = False, lr=
     return model
 
 
-def make_baseline_model(input_shape, hidden_layers, activation1='relu', activation2='relu', activation3='relu',
+def make_baseline_model(input_shape, hidden_layer_neurons, activation1='relu', activation2='relu', activation3='relu',
                         optimizer='adam', conv_layers=2, filter_size=16, kernel_size=3, dropout=0.0, output_size=40,
                         filter_multiplier=1, dubbel_conv: bool = True, k_reg=None):
     model = models.Sequential()
@@ -60,8 +60,8 @@ def make_baseline_model(input_shape, hidden_layers, activation1='relu', activati
         filter_size = int(filter_size * filter_multiplier)
     model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
     model.add(layers.Flatten())
-    model.add(layers.Dense(hidden_layers, activation=activation2, kernel_regularizer=k_reg))
-    model.add(layers.Dense(hidden_layers, activation=activation2, kernel_regularizer=k_reg))
+    model.add(layers.Dense(hidden_layer_neurons, activation=activation2, kernel_regularizer=k_reg))
+    model.add(layers.Dense(hidden_layer_neurons, activation=activation2, kernel_regularizer=k_reg))
     model.add(layers.Dropout(dropout))
     model.add(layers.Dense(output_size, activation=activation3))
     model.compile(optimizer=optimizer, loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
@@ -256,7 +256,34 @@ def test():
     cv2.destroyAllWindows()
 
 
-def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, input_shape, kernel_reg):
+def plot_val_train_loss(history, title, save: bool = False):
+    plt.plot(history.history['loss'], label='loss')
+    plt.plot(history.history['val_loss'], label='validation loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.ylim([0, 1])
+    plt.legend(loc='lower right')
+    plt.title(title)
+    if save:
+        plt.savefig(f"./Plots/{title}.png")
+    plt.show()
+
+
+def plot_val_train_acc(history, title, save: bool = False):
+    plt.plot(history.history['acc'], label='accuracy')
+    plt.plot(history.history['val_acc'], label='validation accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.ylim([0, 1])
+    plt.legend(loc='lower right')
+    plt.title(title)
+    if save:
+        plt.savefig(f"./Plots/{title}.png")
+    plt.show()
+
+
+def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, tv_train_imgs, tv_train_labels,
+                    tv_val_imgs, tv_val_labels, input_shape, kernel_reg):
     # Make first model
     print("Making the first model...")
     # Variabelen moeten wel aangepast worden waarschijnlijk
@@ -268,10 +295,24 @@ def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, in
     print(f"Test acc: {test_acc_base} & loss: {test_loss_base}")
 
     # Plot test loss and accuracy
+    plot_val_train_loss(hist_base, "Base model training and validation loss", save=True)
+    plot_val_train_acc(hist_base, "Base model training and validation accuracy", save=True)
 
     # Make second model, based on transfer learning
     print("Making the second model...")
-    # transferlearn model
+    if not os.path.isfile(config.MODELS + "TV_TL.h5"):
+        print("Model file not found, creating...")
+        tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
+        model_tl = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer, freeze=True)
+        hist_tl, model_tl = model_tl.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
+                                         validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size)
+        model_tl.save(config.MODELS + "TV_TL.h5")
+        plot_val_train_loss(hist_tl, title="Transfer learn model training and validation loss", save=True)
+        plot_val_train_acc(hist_tl, title="Transfer model training and validation accuracy", save=True)
+    else:
+        print("Transfer learn model file located")
+        tl_model = models.load_model(config.MODELS + "TV_TL.h5")
+
     # Moet nog ingevuld worden
     # model2 = ...
     # Plot test loss and accuracy
@@ -327,9 +368,9 @@ def main():
     # test()
 
     # Choice task cyclical learning rate scheduler
-    clr = cyclical_learning_rate(1e-4, 1e-3, step_size=10, scale_fn=lambda x: 1, scale_mode='cycle', type="cyclical")
+    # clr = cyclical_learning_rate(1e-4, 1e-3, step_size=10, scale_fn=lambda x: 1, scale_mode='cycle', type="cyclical")
     print("start random search")
-    random_search(input_shape, stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, n_iter=10)
+    # random_search(input_shape, stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, n_iter=10)
 
     print("Make model")
     # model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax',
@@ -339,9 +380,10 @@ def main():
 
     if not os.path.isfile(config.MODELS + "Baseline.h5"):
         print("Model file not found, creating...")
-        model = make_baseline_model(input_shape, hidden_layer_neurons=60, activation3='softmax', conv_layers=3)
-        # model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
-        #                          validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
+        model = make_baseline_model(input_shape, kernel_size=3, optimizer='adam', hidden_layer_neurons=60,
+                                    activation3='softmax', conv_layers=3, filter_size=8, dropout=0.5,
+                                    dubbel_conv=True, filter_multiplier=2)
+
         model_result = model.fit(stf_trainset, stf_trainset_lab, validation_data=(stf_test, stf_test_lab),
                                  epochs=config.Epochs, batch_size=config.Batch_size)
         model.save(config.MODELS + "Baseline.h5")
@@ -349,6 +391,18 @@ def main():
         print("Model file located")
         model = models.load_model(config.MODELS + "Baseline.h5")
 
+    y_pred = model.predict(stf_test)
+    y_pred = np.argmax(y_pred, axis=1)
+    confusion_matrix = sklearn.metrics.confusion_matrix(stf_test_lab, y_pred)
+    f = open("cf.txt", 'a')
+    p = ""
+    for row in confusion_matrix:
+        for cell in row:
+            p += str(cell) + "; "
+        p += "\n"
+    f.write(p)
+    f.close()
+    input()
     test_loss, test_acc = test_model(model, stf_test, stf_test_lab)
 
     # Transfer learn to TV-HI data
