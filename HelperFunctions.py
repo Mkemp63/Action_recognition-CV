@@ -143,10 +143,10 @@ def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, h
 
 
 
-imgs = cv2.imread("J:\\Python computer vision\\Action_recognition-CV\\Data\\Stanford40\\ImagesConvCrop\\applauding_001.jpg",1)
-cv2.imshow('img', imgs)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+# imgs = cv2.imread("J:\\Python computer vision\\Action_recognition-CV\\Data\\Stanford40\\ImagesConvCrop\\applauding_001.jpg",1)
+# cv2.imshow('img', imgs)
+# cv2.waitKey(0)
+# cv2.destroyAllWindows()
 # p = tf.keras.preprocessing.image.random_shift(imgs, 0.2, 0.0)
 # p = tf.keras.preprocessing.image.random_shear(imgs, 20)
 # p = tf.image.adjust_saturation(imgs, 0.5).numpy()

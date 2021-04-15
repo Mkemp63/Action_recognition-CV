@@ -75,7 +75,7 @@ def getStanfordData():
     stf_test_labels_ind = [dictionary[lab] for lab in stf_test_labels]
 
     imgs_train, labs_train = HF.getDataSet(stf_train_files, config.STANF_CONV_CROP, False, stf_train_labels_ind)
-    imgs_test, labs_test = HF.getDataSet(stf_train_files, config.STANF_CONV_CROP, False, stf_train_labels_ind)
+    imgs_test, labs_test = HF.getDataSet(stf_test_files, config.STANF_CONV_CROP, False, stf_test_labels_ind)
     return imgs_train, labs_train, imgs_test, labs_test
 
 
