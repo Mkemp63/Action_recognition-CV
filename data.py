@@ -4,6 +4,7 @@ import cv2
 
 import HelperFunctions as HF
 import config
+import OpticalFlow as OptF
 
 
 def train_test_stanford(printing: bool = False):
@@ -81,6 +82,19 @@ def getStanfordData():
     # print(imgs_test.shape)
     # print(labs_test.shape)
     return imgs_train, labs_train, imgs_test, labs_test
+
+
+def getFusionData(aantal_frames, augm: bool):
+    tv_test_vid, tv_test_label, tv_tr_v, tv_tr_l = train_tests_tv(True)
+    tv_tr_l = HF.convertLabel(tv_tr_l)
+    tv_test_lab = HF.convertLabel(tv_test_label)
+
+    flow_data = OptF.getVideosFlow(tv_tr_v, config.TV_VIDEOS_SLASH, True, config.Image_size, aantal_frames)
+    flow_data_test = OptF.getVideosFlow(tv_test_vid, config.TV_VIDEOS_SLASH, True, config.Image_size, aantal_frames)
+    # tv_train, tv_val, tv_train_l, tv_val_l = train_test_split(flow_data, tv_tr_l, test_size=0.15, stratify=tv_tr_l)
+
+    tv_train_l, tv_test_l = np.array(tv_tr_l), np.array(tv_test_lab)
+    return flow_data, tv_train_l, flow_data_test, tv_test_l
 
 
 #

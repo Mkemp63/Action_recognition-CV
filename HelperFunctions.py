@@ -6,6 +6,7 @@ import tensorflow as tf
 from imgaug import augmenters as iaa
 
 import config
+import augmentationMethods as am
 
 
 def cropImg(img, size):
@@ -128,16 +129,16 @@ def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, h
             flipped = cv2.flip(img, 1)
             lijst.append(flipped)
         if highBright:
-            hb = tf.image.adjust_brightness(img, 0.4)
+            hb = tf.image.adjust_brightness(img, am.high_bright)
             lijst.append(hb.numpy())
         if lowBright:
-            lb = tf.image.adjust_brightness(img, -0.4)
+            lb = tf.image.adjust_brightness(img, am.low_bright)
             lijst.append(lb.numpy())
         if highSatur:
-            hs = tf.image.adjust_saturation(img, 4)
+            hs = tf.image.adjust_saturation(img, am.high_satur)
             lijst.append(hs.numpy())
         if lowSatur:
-            ls = tf.image.adjust_saturation(img, 0.5)
+            ls = tf.image.adjust_saturation(img, am.low_satur)
             lijst.append(ls.numpy())
     return lijst, count
 

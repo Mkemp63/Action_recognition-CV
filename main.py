@@ -13,6 +13,7 @@ import HelperFunctions as HF
 import OpticalFlow as OptF
 import config
 import data
+import fusion
 
 
 def transfer_learn_model(model_path, new_output_layer, freeze: bool = False, lr=0.0001):
@@ -59,8 +60,8 @@ def make_baseline_model(input_shape, hidden_layers, activation1='relu', activati
         filter_size = int(filter_size * filter_multiplier)
     model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
     model.add(layers.Flatten())
-    model.add(layers.Dense(hidden_layers, activation=activation2))
-    model.add(layers.Dense(hidden_layers, activation=activation2))
+    model.add(layers.Dense(hidden_layers, activation=activation2, kernel_regularizer=k_reg))
+    model.add(layers.Dense(hidden_layers, activation=activation2, kernel_regularizer=k_reg))
     model.add(layers.Dropout(dropout))
     model.add(layers.Dense(output_size, activation=activation3))
     model.compile(optimizer=optimizer, loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
@@ -255,11 +256,12 @@ def test():
     cv2.destroyAllWindows()
 
 
-def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, input_shape):
+def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, input_shape, kernel_reg):
     # Make first model
     print("Making the first model...")
     # Variabelen moeten wel aangepast worden waarschijnlijk
-    model_base = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
+    model_base = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax',
+                                     kernel_reg=kernel_reg)
     hist_base, model_base = model_base.fit(stanf_train, stanf_train_lab, validation_data=(stanf_test, stanf_test_lab),
                                            epochs=config.Epochs, batch_size=config.Batch_size)
     test_loss_base, test_acc_base = model_base.evaluate(stanf_test, stanf_test_lab)
@@ -270,14 +272,36 @@ def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, in
     # Make second model, based on transfer learning
     print("Making the second model...")
     # transferlearn model
+    # Moet nog ingevuld worden
+    # model2 = ...
     # Plot test loss and accuracy
 
     # Make third model, etc..
     print("Making the third model...")
+    """
+    WAARDEN MOETEN GELIJK ZIJN AAN MODEL1, MAAR MAG NIET GETRAIND ZIJN VOLGENS MIJ.
+    """
+    aantal_frames = 10
+    input_shape3 = (config.Image_size, config.Image_size, aantal_frames * 2)
+    model3 = make_baseline_model(input_shape3, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
+    # ZONDER AUGMENTATION
+    flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=False)
+
+    hist_model3, model3 = model3.fit(flow_train, flow_train_l, epochs=config.Epochs, batch_size=config.Batch_size)
+    test_loss_m3, test_acc_m3 = model3.evaluate(flow_test, flow_test_l)
     # Plot test loss and accuracy
 
-    # Make fourth model, etc..
+    """Make fourth model, etc.."""
     print("Making the fourth model...")
+    # model4 = fusion.standardModel4(model2, model3, True, kernel_reg)
+
+    # Alternatief op basis van Assignment 5 Q&A
+    # model4 = fusion.standardModel4(model3, model2, True, kernel_reg)
+
+    # train_data_model4 = [data_2, data_3]
+    # labels_model4 = .... zou hetzelfde moeten zijn als voor model2 en model3
+    # model4.fit(train_data_model4, labels_model4, epochs=config.Epochs)
+
     # Plot test loss and accuracy
 
     print()

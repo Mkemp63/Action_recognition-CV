@@ -5,6 +5,7 @@ import math
 import config
 import HelperFunctions as HF
 import tensorflow as tf
+import augmentationMethods as am
 
 
 def calcOpticalFlow(location: str, file: str, write: bool, view: bool = False,
@@ -91,8 +92,33 @@ def transformFrame(frame, h: int, crop: bool, size: int):
     return frame
 
 
-def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool, size: int = -1, addEffect: bool = False):
-    ans = [] # numbOfFrames aantal frames waarbij ans[f*2] = magnitude, ans[f*2+1] = angle
+def augmentFrame(img, augm_num):
+    if augm_num == 0:
+        return img
+    elif augm_num == 1:
+        return am.blurImg(img, am.blur)
+    elif augm_num == 2:
+        return am.transposeX(img, am.tx_rechts)
+    elif augm_num == 3:
+        return am.transposeX(img, am.tx_links)
+    elif augm_num == 4:
+        return am.grayscaleImg(img)
+    elif augm_num == 5:
+        return am.invertImg(img)
+    elif augm_num == 6:
+        return am.flipImg(img)
+    elif augm_num == 7:
+        return am.adjustBrightnessImg(img, am.high_bright)
+    elif augm_num == 8:
+        return am.adjustBrightnessImg(img, am.low_bright)
+    elif augm_num == 9:
+        return am.adjustSaturation(img, am.high_satur)
+    elif augm_num == 10:
+        return am.adjustSaturation(img, am.low_satur)
+
+
+def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool, size: int = -1, augm_num: int = 0, addEffect: bool = False):
+    ans = []  # numbOfFrames aantal frames waarbij ans[f*2] = magnitude, ans[f*2+1] = angle
 
     cap = cv2.VideoCapture(location + file)
     video_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
@@ -110,11 +136,9 @@ def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool,
             break
         frame = transformFrame(frame, video_size[1], crop, size)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        if addEffect:
-            gray = tf.image.adjust_brightness(gray, -0.4).numpy()
-            # gray = tf.image.adjust_brightness(gray, 0.4).numpy()
-            # gray = cv2.flip(gray, 1)
-            # gray = (255 - gray)
+        # if addEffect:
+        #     gray = tf.image.adjust_brightness(gray, -0.4).numpy()
+        gray = augmentFrame(gray, augm_num)
 
         if i == round((len(ans)/2+1)*every_I) and len(ans) < 2*numbOfFrames:  # if i % every_I == 0:
             flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
@@ -179,6 +203,7 @@ def getVideosFlow(files, location: str, crop: bool, size: int,  count: int = 10)
             print(f"Length: {len(a)}")
         ans.append(np.transpose(np.array(a), (1,2,0)))
     return np.array(ans)
+
 
 # test()
 # calcOpticalFlow("J:\\Python computer vision\\Action_recognition-CV\\Data\\TV-HI\\tv_human_interactions_videos\\",

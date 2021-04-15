@@ -13,7 +13,7 @@ def countLayers(model, type):
 
 def makeSubModel(model, after_layer_type, after_layer_number, freeze: bool):
     aantal = 0
-    if after_layer_number == -1: after_layer_number = countLayers(model, after_layer_type)
+    if after_layer_number < 0: after_layer_number = countLayers(model, after_layer_type) + 1 + after_layer_number
     m_new = models.Sequential()
     for layer in model.layers:
         m_new.add(layer)
@@ -28,26 +28,14 @@ def makeSubModel(model, after_layer_type, after_layer_number, freeze: bool):
     return m_new
 
 
-def makeFusionModel2(model_a, model_b, after_layer_type, after_layer_number=-1, new_layers1=[], new_layers2=[],
-                    freeze: bool=False, type_fusion: str = 'conc'):
-    """
-    model_a / model_b = twee modellen om samen te voegen
-    after_layer_type = type laag waar het achter moet komen, bijv: conv.., max..., dense..
-    after_layer_number = na hoeveelste van type de fusion moet komen
-        -1 => na laatste van dat type
-    new_layers = lijst met layers
-    type_fusion: 'con'(catenate), 'avg', 'max', 'min', 'add', 'sub'(tract)
-    """
-
-
 def checkValues(new_layers_a_list, new_layers_b_list, aantal_fusion, type_fusion_list):
     ans = ""
     if aantal_fusion != len(type_fusion_list):
         ans = f"Aantal fusion moet gelijk zijn aan len(type_fusion_list); {aantal_fusion} & {len(type_fusion_list)}"
     elif aantal_fusion != len(new_layers_a_list):
         ans = f"Aantal fusion moet gelijk zijn aan len(new_layers_a_list); {aantal_fusion} & {len(new_layers_a_list)}"
-    elif len(new_layers_b_list) + 1 != len(new_layers_a_list):
-        ans = f"a_list must have 1 more list because that last list is used after the final fusion layer.\
+    elif len(new_layers_b_list) != len(new_layers_a_list):
+        ans = f"a_list must have same size as b_list.\
          len a & b: {len(new_layers_a_list)} & {len(new_layers_a_list)}"
     # for i in range(0, len(new_layers_a_list)):
     #     if len(new_layers_a_list[i]) == 0:
@@ -123,6 +111,51 @@ def makeFusionModel(model_a, model_b, after_layer_type_list, aft_lay_n_a=-1, aft
         return
 
 
+def standardModel4(modela, modelb, printen: bool, kernel_reg: bool):
+    cut_off_layers = [layers.Dense, layers.Dense]
+    after_layer_N_a = -2    # i = na i van cut_off_layer[0]; -2 betekent: voor de laatste van cut_off_layer[0]
+    after_layer_N_b = -2    # i = na i van cut_off_layer[0]; -2 betekent: voor de laatste van cut_off_layer[1]
+
+    aantal_fusion = 1
+    fusion_types = ['conc_dense']
+
+    # exclusief output layer, die zit al in de functie
+    path_a = [[layers.Dense(40, activation='relu', kernel_regularizer=kernel_reg)]]
+    path_b = [[]]
+    new_model = makeFusionModel(modela, modelb, cut_off_layers, after_layer_N_a, after_layer_N_b,
+                                path_a, path_b,
+                                False, aantal_fusion, fusion_types)
+    if printen: print(new_model.summary())
+    return
+
+
+def alt_model(modela, modelb, printen: bool, kernel_reg: bool):
+    """Gebaseerd op rechter model assignment 5 Q&A"""
+    cut_off_layers = [layers.Conv2D, layers.Conv2D]
+    after_layer_N_a = -2  # i = na i van cut_off_layer[0];
+    after_layer_N_b = -2  # i = na i van cut_off_layer[0];
+
+    aantal_fusion = 2
+    fusion_types = ['conc_conv', 'conc_dense']  # concatenate, kan je aanpassen met iets anders
+
+    # exclusief output layer, die zit al in de functie
+    path_a = [[layers.MaxPooling2D((2, 2)),
+               layers.Conv2D(kernel_size=(3, 3), filters=8, activation='relu', kernel_regularizer=kernel_reg),
+               layers.Flatten(),
+               layers.Dense(100, activation='relu', kernel_regularizer=kernel_reg),
+               layers.Dense(60, activation='relu', kernel_regularizer=kernel_reg)],
+              []]
+    path_b = [[layers.MaxPooling2D((2, 2)),
+               layers.Conv2D(kernel_size=(3, 3), filters=8, activation='relu', kernel_regularizer=kernel_reg),
+               layers.Flatten(),
+               layers.Dense(60, activation='relu', kernel_regularizer=kernel_reg)], []]
+    new_model = makeFusionModel(modela, modelb, cut_off_layers, after_layer_N_a, after_layer_N_b,
+                                path_a, path_b,
+                                False, aantal_fusion, fusion_types)
+    if printen: print(new_model.summary())
+    return
+
+
 def testFusion():
     modela = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
     modelb = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
@@ -140,6 +173,14 @@ def testFusion():
     print(new_model.summary())
     input()
     return
+
+
+modela = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
+modelb = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
+alt_model(modela, modelb, True, None) #standardModel4(modela, modelb, True)
+input()
+
+
 
 testFusion()
 
