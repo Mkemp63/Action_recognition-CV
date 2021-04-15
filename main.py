@@ -287,8 +287,9 @@ def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, tv
     # Make first model
     print("Making the first model...")
     # Variabelen moeten wel aangepast worden waarschijnlijk
-    model_base = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax',
-                                     kernel_reg=kernel_reg)
+    model_base = make_baseline_model(input_shape, kernel_size=3, optimizer='adam', hidden_layer_neurons=60,
+                                     activation3='softmax', conv_layers=3, filter_size=8, dropout=0.5,
+                                     dubbel_conv=True, filter_multiplier=2, kernel_reg=kernel_reg)
     hist_base, model_base = model_base.fit(stanf_train, stanf_train_lab, validation_data=(stanf_test, stanf_test_lab),
                                            epochs=config.Epochs, batch_size=config.Batch_size)
     test_loss_base, test_acc_base = model_base.evaluate(stanf_test, stanf_test_lab)
