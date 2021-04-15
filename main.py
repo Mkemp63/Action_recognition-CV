@@ -285,7 +285,9 @@ def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, in
     input_shape3 = (config.Image_size, config.Image_size, aantal_frames * 2)
     model3 = make_baseline_model(input_shape3, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
     # ZONDER AUGMENTATION
-    flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=False)
+    flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=False, extra_fusion=False)
+    # MET AUGMENTATION EN EXTRA DATA, ANDERE FRAMES GESELECTEERD
+    # flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=True, extra_fusion=True)
 
     hist_model3, model3 = model3.fit(flow_train, flow_train_l, epochs=config.Epochs, batch_size=config.Batch_size)
     test_loss_m3, test_acc_m3 = model3.evaluate(flow_test, flow_test_l)

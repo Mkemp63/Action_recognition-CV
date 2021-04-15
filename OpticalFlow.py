@@ -117,7 +117,8 @@ def augmentFrame(img, augm_num):
         return am.adjustSaturation(img, am.low_satur)
 
 
-def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool, size: int = -1, augm_num: int = 0, addEffect: bool = False):
+def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool, size: int = -1, augm_num: int = 0,
+                        addEffect: bool = False, extra_i: int = 0):
     ans = []  # numbOfFrames aantal frames waarbij ans[f*2] = magnitude, ans[f*2+1] = angle
 
     cap = cv2.VideoCapture(location + file)
@@ -140,7 +141,7 @@ def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool,
         #     gray = tf.image.adjust_brightness(gray, -0.4).numpy()
         gray = augmentFrame(gray, augm_num)
 
-        if i == round((len(ans)/2+1)*every_I) and len(ans) < 2*numbOfFrames:  # if i % every_I == 0:
+        if i == round((len(ans)/2+1)*every_I)+extra_i and len(ans) < 2*numbOfFrames:  # if i % every_I == 0:
             flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
             magnitude, angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
             ans.append(magnitude)
@@ -201,8 +202,29 @@ def getVideosFlow(files, location: str, crop: bool, size: int,  count: int = 10)
         a = getOpticalFlowVideo(location, fileName, count, crop, size)
         if len(a) != 20:
             print(f"Length: {len(a)}")
-        ans.append(np.transpose(np.array(a), (1,2,0)))
+        ans.append(np.transpose(np.array(a), (1, 2, 0)))
     return np.array(ans)
+
+
+def getVideosFlow2(files, location: str, crop: bool, size: int,  count: int = 10,
+                   extra_data: bool = False, augm: bool = False):
+    ans = []
+    augmIndexes = [1, 2, 3, 5, 6, 7, 8, 9]  # 4 is grayscale
+    rondes = 2 if extra_data else 1
+    for fileName in files:
+        for i in range(0, rondes):
+            a = getOpticalFlowVideo(location, fileName, count, crop, size, extra_i=i)
+            if len(a) != 2*count:
+                print(f"Length: {len(a)}")
+            ans.append(np.transpose(np.array(a), (1, 2, 0)))
+            if augm:
+                for j in range(0, len(augmIndexes)):
+                    a = getOpticalFlowVideo(location, fileName, count, crop, size, extra_i=i, augm_num=augmIndexes[j])
+                    if len(a) != 2*count:
+                        print(f"Length: {len(a)}")
+                    ans.append(np.transpose(np.array(a), (1, 2, 0)))
+    aantal = rondes*len(augmIndexes) if augm else rondes
+    return np.array(ans), aantal
 
 
 # test()

@@ -84,12 +84,15 @@ def getStanfordData():
     return imgs_train, labs_train, imgs_test, labs_test
 
 
-def getFusionData(aantal_frames, augm: bool):
-    tv_test_vid, tv_test_label, tv_tr_v, tv_tr_l = train_tests_tv(True)
+def getFusionData(aantal_frames, augm: bool, extra_fusion: bool):
+    tv_test_vid, tv_test_label, tv_tr_v, tv_tr_l = train_tests_tv(False)
     tv_tr_l = HF.convertLabel(tv_tr_l)
     tv_test_lab = HF.convertLabel(tv_test_label)
 
-    flow_data = OptF.getVideosFlow(tv_tr_v, config.TV_VIDEOS_SLASH, True, config.Image_size, aantal_frames)
+    flow_data, keren = OptF.getVideosFlow2(tv_tr_v, config.TV_VIDEOS_SLASH, True, config.Image_size, aantal_frames,
+                                           extra_data=extra_fusion, augm=augm)
+    if keren > 1:
+        tv_tr_l = HF.double_labels(tv_tr_l, keren)
     flow_data_test = OptF.getVideosFlow(tv_test_vid, config.TV_VIDEOS_SLASH, True, config.Image_size, aantal_frames)
     # tv_train, tv_val, tv_train_l, tv_val_l = train_test_split(flow_data, tv_tr_l, test_size=0.15, stratify=tv_tr_l)
 
@@ -100,6 +103,7 @@ def getFusionData(aantal_frames, augm: bool):
 #
 # Volgens mij worden de functies hieronder niet meer gebruikt
 #
+
 
 def loadStanfordData():
     stf_train_files, stf_train_labels_S, stf_test_files, stf_test_labels = train_test_stanford(False)
@@ -133,7 +137,6 @@ def loadStanfordData():
     test_fold = [-1] * len(stf_train_imgs) + [0] * len(stf_val_imgs)
 
 
-
 def readConvImages(imgs, cropped: bool, grayScale: bool):
     lijst = []
     gray = 0 if grayScale else 1
@@ -150,4 +153,3 @@ def readConvImages(imgs, cropped: bool, grayScale: bool):
             lijst.append(img)
             lijst.append(img2)
     return lijst
-
