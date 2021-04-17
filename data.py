@@ -88,7 +88,7 @@ def getDataSet(files, location: str, grayScale: bool, labels, aug: bool = True, 
             augmImgs, count = HF.augmentImages(imgs, False, True, True, True, True, True, True, True, True, True)
         newLabels = HF.double_labels(labels, count)
     elif aug and not leave_one_out:
-        augmImgs, count = HF.augmentImages(imgs, False, True, True, True, True, True, True, True, True, True)
+        augmImgs, count = HF.augmentImages(imgs, True, True, True, True, True, True, True, True, True, True)
         newLabels = HF.double_labels(labels, count)
     else:
         return np.array(imgs), np.array(labels)

@@ -25,7 +25,7 @@ Validate_perc = 0.1
 
 # Training information
 Max_epochs = 15
-Epochs = 10
+Epochs = 15
 Folds = 5
 Batch_size = 32
 Use_pretrained = True

@@ -1,5 +1,3 @@
-import os
-
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,10 +9,11 @@ from tensorflow.keras import layers, models
 
 import HelperFunctions as HF
 import OpticalFlow as OptF
-import fusion
+import augmentationMethods as am
 import config
 import data
-import augmentationMethods as am
+import fusion
+
 
 def transfer_learn_model(model_path, new_output_layer, freeze: bool = False, lr=0.0001):
     old_model = models.load_model(model_path)
@@ -39,8 +38,7 @@ def transfer_learn_model(model_path, new_output_layer, freeze: bool = False, lr=
 
 def make_baseline_model(input_shape, hidden_layer_neurons, activation1='relu', activation2='relu', activation3='relu',
                         optimizer=tf.keras.optimizers.Adam(), conv_layers=2, filter_size=16, kernel_size=3, dropout=0.0,
-                        output_size=40,
-                        filter_multiplier=1, dubbel_conv: bool = True, k_reg=None):
+                        output_size=40, filter_multiplier=1, dubbel_conv: bool = True, k_reg=None, dense_n: int = 2):
     model = models.Sequential()
     if kernel_size == 5 and conv_layers == 3:
         conv_layers = 2
@@ -61,8 +59,8 @@ def make_baseline_model(input_shape, hidden_layer_neurons, activation1='relu', a
         filter_size = int(filter_size * filter_multiplier)
     model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1, kernel_regularizer=k_reg))
     model.add(layers.Flatten())
-    model.add(layers.Dense(hidden_layer_neurons, activation=activation2, kernel_regularizer=k_reg))
-    model.add(layers.Dense(hidden_layer_neurons, activation=activation2, kernel_regularizer=k_reg))
+    for i in range(dense_n):
+        model.add(layers.Dense(hidden_layer_neurons, activation=activation2, kernel_regularizer=k_reg))
     model.add(layers.Dropout(dropout))
     model.add(layers.Dense(output_size, activation=activation3))
     model.compile(optimizer=optimizer, loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
@@ -70,6 +68,43 @@ def make_baseline_model(input_shape, hidden_layer_neurons, activation1='relu', a
 
     print(model.summary())
     return model
+
+
+def make_small_model():
+    stanf_train, stanf_train_lab, stanf_test, stanf_test_lab = data.getStanfordData()
+
+    HF.take_middle_frame(config.TV_VIDEOS)
+    tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = data.train_tests_tv()
+
+    tv_test_files, tv_train_files = video_name_to_image_name(tv_test_files, tv_train_files)
+
+    tv_test_labels_ind = HF.convertLabel(tv_test_labels)
+    tv_train_labels_ind = HF.convertLabel(tv_train_labels)
+
+    tv_train, tv_train_l = data.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
+    tv_test, tv_test_l = data.getDataSet(tv_test_files, config.TV_CONV_CROP, False, tv_test_labels_ind, False)
+
+    model_base = make_baseline_model((112, 112, 3), kernel_size=3,
+                                     optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+                                     hidden_layer_neurons=60, activation3='softmax', conv_layers=3, filter_size=8,
+                                     dropout=0.5, dubbel_conv=True, filter_multiplier=1.5, k_reg=None, dense_n=1)
+
+    hist_base = model_base.fit(stanf_train, stanf_train_lab,
+                               validation_data=(stanf_test, stanf_test_lab),
+                               epochs=config.Epochs, batch_size=config.Batch_size)
+    model_base.save(config.MODELS + "Small.h5")
+    test_loss_base, test_acc_base = model_base.evaluate(stanf_test, stanf_test_lab)
+    print(f"Test acc: {test_acc_base} & loss: {test_loss_base}")
+
+    # Plot test loss and accuracy
+    plot_val_train_loss(hist_base, "Base model training and validation loss", save=True)
+    plot_val_train_acc(hist_base, "Base model training and validation accuracy", save=True)
+
+    tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
+    model_tl = transfer_learn_model(config.MODELS + "Small.h5", tv_output_layer, freeze=True)
+    hist_tl = model_tl.fit(tv_train, tv_train_l, epochs=config.Epochs,
+                               validation_data=(tv_test, tv_test_l), batch_size=config.Batch_size)
+
 
 
 def cyclical_learning_rate(initial_learning_rate, maximal_learning_rate, step_size, scale_fn, scale_mode,
@@ -84,13 +119,11 @@ def cyclical_learning_rate(initial_learning_rate, maximal_learning_rate, step_si
         clr = tfa.optimizers.ExponentialCyclicalLearningRate(initial_learning_rate=initial_learning_rate,
                                                              maximal_learning_rate=maximal_learning_rate,
                                                              step_size=step_size,
-                                                             scale_fn=scale_fn,
                                                              scale_mode=scale_mode)
     elif type == "triangle":
         clr = tfa.optimizers.TriangularCyclicalLearningRate(initial_learning_rate=initial_learning_rate,
                                                             maximal_learning_rate=maximal_learning_rate,
                                                             step_size=step_size,
-                                                            scale_fn=scale_fn,
                                                             scale_mode=scale_mode)
     elif type == "triangle2":
         clr = tfa.optimizers.Triangular2CyclicalLearningRate(initial_learning_rate=initial_learning_rate,
@@ -130,25 +163,19 @@ def test_model(model, test_images: np.ndarray, test_labels: np.ndarray):
     return test_loss, test_acc
 
 
-def video_name_to_image_name(testx, testy, trainx, trainy):
+def video_name_to_image_name(testx, trainx):
     # very unoptimized, but it works :)
     for i in range(len(testx)):
         name = testx[i]
         name = name[:-4] + ".jpg"
         testx[i] = name
-    for i in range(len(testy)):
-        name = testy[i]
-        name = name[:-4] + ".jpg"
-        testy[i] = name
+
     for i in range(len(trainx)):
         name = trainx[i]
         name = name[:-4] + ".jpg"
         trainx[i] = name
-    for i in range(len(trainy)):
-        name = trainy[i]
-        name = name[:-4] + ".jpg"
-        trainy[i] = name
-    return testx, testy, trainx, trainy
+
+    return testx, trainx
 
 
 def testOpticalFlow():
@@ -240,7 +267,7 @@ def test():
     blur = iaa.GaussianBlur(sigma=(0, 1.5)).to_deterministic()
     newImgs, labss = data.getDataSet(["applauding_004.jpg"], config.STANF_CONV_CROP, False, [1])
     applauding = cv2.imread(config.STANF_CONV_CROP + "applauding_004.jpg", 1)
-    #img_blur = blur(image=applauding)
+    # img_blur = blur(image=applauding)
     img_hue = am.adjustHue(img=applauding, hue=-.5)
     # img = seq(images=np.array([applauding]))
     # print(type(img))
@@ -311,9 +338,23 @@ def testKernelReg(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels, 
 def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels, input_shape,
                     flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames, kernel_reg=None,
                     leave_one_out: bool = False, test_fusions: bool = False, useVal: bool = False):
-    if useVal:
-        # Splits de train in val en train set
+    stanf_train, stanf_train_lab, stanf_test, stanf_test_lab = data.getStanfordData()
 
+    if useVal:
+        stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stanf_train, stanf_train_lab,
+                                                                                          test_size=config.Validate_perc,
+                                                                                          random_state=42)
+        tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels = train_test_split(tv_train_imgs, tv_train_labels,
+                                                                                      test_size=config.Validate_perc,
+                                                                                      random_state=42)
+        flow_train_vids, flow_val_vids, flow_train_labels, flow_val_labels = train_test_split(flow_train, flow_train_l,
+                                                                                              test_size=config.Validate_perc,
+                                                                                              random_state=42)
+        print(tv_val_labels)
+        print(flow_val_labels)
+        print(" ")
+        print(tv_val_labels.shape)
+        print(flow_val_labels.shape)
 
     # Make first model
     print("Making the first model...")
@@ -340,7 +381,7 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels
 
                 hist_base = model_current.fit(stanf_train, stanf_train_lab,
                                               validation_data=(stanf_test, stanf_test_lab),
-                                                       epochs=config.Epochs, batch_size=config.Batch_size)
+                                              epochs=config.Epochs, batch_size=config.Batch_size)
 
                 test_loss_base, test_acc_base = model_current.evaluate(stanf_test, stanf_test_lab)
                 print(f"Test acc: {test_acc_base} & loss: {test_loss_base} for leave_out_ind {i}")
@@ -350,19 +391,14 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels
                 plot_val_train_acc(hist_base, f"Base model {i} training and validation accuracy", save=True)
 
     else:
-        stanf_train, stanf_train_lab, stanf_test, stanf_test_lab = data.getStanfordData()
-        stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stanf_train, stanf_train_lab,
-                                                                                          test_size=config.Validate_perc)
-        # if useTest:
-        #     hist_base, model_base = model_base.fit(stf_train_imgs, stf_train_labels,
-        #                                            validation_data=(stf_val_imgs, stf_val_labels),
-        #                                            epochs=config.Epochs, batch_size=config.Batch_size)
-        #     test_loss_base, test_acc_base = model_base.evaluate(stanf_test, stanf_test_lab)
-        #     print(f"Test acc: {test_acc_base} & loss: {test_loss_base}")
-        # else:
-        hist_base, model_base = model_base.fit(stf_train_imgs, stf_train_labels,
-                                               validation_data=(stf_val_imgs, stf_val_labels),
-                                               epochs=config.Epochs, batch_size=config.Batch_size)
+        if useVal:
+            hist_base = model_base.fit(stf_train_imgs, stf_train_labels,
+                                       validation_data=(stf_val_imgs, stf_val_labels),
+                                       epochs=config.Epochs, batch_size=config.Batch_size)
+        else:
+            hist_base = model_base.fit(stanf_train, stanf_train_lab,
+                                       validation_data=(stanf_test, stanf_test_lab),
+                                       epochs=config.Epochs, batch_size=config.Batch_size)
         test_loss_base, test_acc_base = model_base.evaluate(stanf_test, stanf_test_lab)
         print(f"Test acc: {test_acc_base} & loss: {test_loss_base}")
 
@@ -372,17 +408,20 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels
 
     # Make second model, based on transfer learning
     print("Making the second model...")
+
     tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
     model_tl = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer, freeze=True)
-    hist_tl, model_tl = model_tl.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
-                                     validation_data=(tv_test_imgs, tv_test_labels), batch_size=config.Batch_size)
+    if useVal:
+        hist_tl = model_tl.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
+                               validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size)
+    else:
+        hist_tl = model_tl.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
+                               validation_data=(tv_test_imgs, tv_test_labels), batch_size=config.Batch_size)
     model_tl.save(config.MODELS + "TV_TL.h5")
     plot_val_train_loss(hist_tl, title="Transfer learn model training and validation loss", save=True)
     plot_val_train_acc(hist_tl, title="Transfer model training and validation accuracy", save=True)
 
     model2 = model_tl
-
-
 
     # Make third model, etc..
     print("Making the third model...")
@@ -398,15 +437,18 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels
     # flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=False, extra_fusion=False)
     # MET AUGMENTATION EN EXTRA DATA, ANDERE FRAMES GESELECTEERD
     # flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=True, extra_fusion=True)
+    if useVal:
+        hist_model3 = model3.fit(flow_train_vids, flow_train_labels, epochs=config.Epochs, batch_size=config.Batch_size,
+                                 validation_data=(flow_val_vids, flow_val_labels))
+    else:
+        hist_model3 = model3.fit(flow_train, flow_train_l, epochs=config.Epochs, batch_size=config.Batch_size,
+                                 validation_data=(flow_test, flow_test_l))
 
-    hist_model3 = model3.fit(flow_train, flow_train_l, epochs=config.Epochs, batch_size=config.Batch_size)
     test_loss_m3, test_acc_m3 = model3.evaluate(flow_test, flow_test_l)
     print(f"Test acc: {test_acc_m3} & loss: {test_loss_m3}")
     # Plot test loss and accuracy
     plot_val_train_loss(hist_model3, "Model 3 training and validation loss", save=True)
     plot_val_train_acc(hist_model3, "Model 3 training and validation accuracy", save=True)
-
-
 
     """Make fourth model, etc.."""
     # ALS WE EEN DROPOUT LAYER GEBRUIKEN IN MODEL 1/2/3 DAN MOET FUSION.STANDARDMODEL MISSCHIEN AANGEPAST WORDEN
@@ -415,11 +457,17 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels
     print("Making the fourth model...")
     model4 = fusion.standardModel4(model2, model3, True, kernel_reg)
     # Alternatief op basis van Assignment 5 Q&A  # model4 = fusion.standardModel4(model3, model2, True, kernel_reg)
+    labels_model4 = flow_val_labels  # ....  # zou hetzelfde moeten zijn als voor model2 en model3
+    if useVal:
+        train_data_model4 = [tv_train_imgs, flow_train_vids]
+        hist_model4 = model4.fit(train_data_model4, labels_model4, epochs=config.Epochs,
+                                 validation_data=(flow_val_vids, flow_val_labels))
+    else:
+        train_data_model4 = [tv_train_imgs, flow_train]
+        hist_model4 = model4.fit(train_data_model4, labels_model4, epochs=config.Epochs,
+                                 validation_data=(flow_test, flow_test_l))
 
-    train_data_model4 = [data_2, data_3]
-    labels_model4 = #....  # zou hetzelfde moeten zijn als voor model2 en model3
-    hist_model4 = model4.fit(train_data_model4, labels_model4, epochs=config.Epochs)
-    test_loss_m4, test_acc_m4 = model4.evaluate(, )
+    test_loss_m4, test_acc_m4 = model4.evaluate(flow_test, flow_test_l)
     print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
 
     # Plot test loss and accuracy
@@ -428,37 +476,19 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels
 
     # Testen fusion
     if test_fusions:
-        fusion.printNiks() # Zodat hij niet weer de import fusion verwijdert
+        fusion.printNiks()  # Zodat hij niet weer de import fusion verwijdert
         fusion.probeerFusionOpties(model2, model3, True, train_data_model4, labels_model4)
 
     print()
     return
 
 
-def tempTest():
-    aantal_frames = 10
-    input_shape3 = (config.Image_size, config.Image_size, aantal_frames * 2)
-    model3 = make_baseline_model(input_shape3, kernel_size=3, hidden_layer_neurons=60, activation3='softmax',
-                                 conv_layers=3, filter_size=8, dropout=0.5, dubbel_conv=True, filter_multiplier=2,
-                                 k_reg=None, output_size=4)
-    # ZONDER AUGMENTATION
-    # flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=False, extra_fusion=False)
-    # MET AUGMENTATION EN EXTRA DATA, ANDERE FRAMES GESELECTEERD
-    flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=True, extra_fusion=False)
-
-    hist_model3 = model3.fit(flow_train, flow_train_l, epochs=config.Epochs, batch_size=config.Batch_size)
-    test_loss_m3, test_acc_m3 = model3.evaluate(flow_test, flow_test_l)
-
-
-
 def main():
-    print("TEST 3")
-    tempTest()
-    print("Done!")
+    make_small_model()
     input()
     input_shape = (config.Image_size, config.Image_size, 3)
     aantal_frames = 10
-    flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=True, extra_fusion=True)
+    flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=True, extra_fusion=False)
 
     # Test the different forms of augmentation
     # test()
@@ -470,13 +500,10 @@ def main():
     HF.take_middle_frame(config.TV_VIDEOS)
     tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = data.train_tests_tv()
 
-    tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = video_name_to_image_name(tv_test_files,
-                                                                                              tv_test_labels,
-                                                                                              tv_train_files,
-                                                                                              tv_train_labels)
-    uniqueLabels, dictionary = HF.getUniques(tv_test_labels)
-    tv_train_labels_ind = [dictionary[lab] for lab in tv_train_labels]
-    tv_test_labels_ind = [dictionary[lab] for lab in tv_test_labels]
+    tv_test_files, tv_train_files = video_name_to_image_name(tv_test_files, tv_train_files)
+
+    tv_test_labels_ind = HF.convertLabel(tv_test_labels)
+    tv_train_labels_ind = HF.convertLabel(tv_train_labels)
 
     tv_train, tv_train_l = data.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
     tv_test, tv_test_l = data.getDataSet(tv_test_files, config.TV_CONV_CROP, False, tv_test_labels_ind, False)
@@ -485,7 +512,7 @@ def main():
 
     # Function to train and make the four models
     makeModelsFinal(tv_train, tv_train_l, tv_test, tv_test_l, input_shape,
-                    flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames, useVal=False)
+                    flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames, useVal=True)
     # makeModelsFinal(tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels, input_shape, kernel_reg=1,
     #                 leave_one_out=True)
 
@@ -503,7 +530,6 @@ def main():
         print("Testing different fusion layers")
         makeModelsFinal(tv_train, tv_train_l, tv_test, tv_test_l, input_shape,
                         flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames, test_fusions=True, useVal=True)
-
 
     # if not os.path.isfile(config.MODELS + "Baseline.h5"):
     #     print("Model file not found, creating...")
@@ -532,8 +558,14 @@ def main():
     # input()
     # test_loss, test_acc = test_model(model, stf_test, stf_test_lab)
 
+    newImgs, labss = data.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
 
+    tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels = train_test_split(newImgs, labss,
+                                                                                  test_size=config.Validate_perc)
 
+    # Function to train and make the four models
+    makeModelsFinal(newImgs, labss, input_shape, kernel_reg=1,
+                    leave_one_out=False)
 
     # if not os.path.isfile(config.MODELS + "TV_TL.h5"):
     #     print("Model file not found, creating...")
@@ -581,4 +613,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

@@ -47,7 +47,7 @@ def checkValues(new_layers_a_list, new_layers_b_list, aantal_fusion, type_fusion
 
 def makeFusionModel(model_a, model_b, after_layer_type_list, aft_lay_n_a=-1, aft_lay_n_b=-1, new_layers_a_list=[],
                     new_layers_b_list=[], freeze: bool = False, aantal_fusion: int = 1,
-                    type_fusion_list: list = ['conc'], output_layer=layers.Dense(4, activation='softmax')):
+                    type_fusion_list: list = ['conc'], output_layer=layers.Dense(4, activation='softmax', name="Dense_output4")):
     """ WARNING: ZORG ERVOOR DAT WAAR JE DE MODELLEN AFSNIJDT ZE WEL DAADWERKELIJK KUNNEN FUSEREN
     model_a / model_b = twee modellen om samen te voegen
     after_layer_type = type laag waar het achter moet komen, bijv: conv.., max..., dense..
@@ -122,7 +122,7 @@ def standardModel4(modela, modelb, printen: bool, kernel_reg, fusions: list = []
     fusion_types = ['conc_dense'] if len(fusions) < 1 else [fusions[0]]
 
     # exclusief output layer, die zit al in de functie
-    path_a = [[layers.Dense(40, activation='relu', kernel_regularizer=kernel_reg)]]
+    path_a = [[layers.Dense(40, activation='relu', kernel_regularizer=kernel_reg, name='Dense1')]]
     path_b = [[]]
     new_model = makeFusionModel(modela, modelb, cut_off_layers, after_layer_N_a, after_layer_N_b,
                                 path_a, path_b,
@@ -182,24 +182,24 @@ def flatten_model(modela, modelb, printen: bool, kernel_reg, fusions: list = [])
     return new_model
 
 
-def probeerFusionOpties(model2, model3, printen: bool, train, train_l, kernel_reg=None):
+def probeerFusionOpties(model2, model3, printen: bool, train_frame, train_flow, train_l, kernel_reg=None):
     opties = ['conc_dense' 'avg', 'add', 'sub', 'max', 'min']
-    tr, tr_l, val, val_l = train_test_split(train, train_l, test_size=config.Validate_perc)
+    tr, tr_l, val, val_l = train_test_split(train_frame, train_l, test_size=config.Validate_perc, random_state=42)
+    tr_flow, tr_l_flow, val_flow, val_l_flow = train_test_split(train_flow, train_l, test_size=config.Validate_perc, random_state=42)
     for i in range(0, 2):
         for j in range(0, len(opties)):
             model4 = standardModel4(model2, model3, True, kernel_reg, fusions=[opties[j]]) if i == 0 else \
                 flatten_model(model2, model3, True, kernel_reg, fusions=[opties[j]])
 
-            hist_model4, model4 = model4.fit(tr, tr_l, validation_data=(val, val_l), epochs=config.Epochs)
-            test_loss_m4, test_acc_m4 = model4.evaluate(val, val_l)
+            hist_model4 = model4.fit([tr, tr_flow], tr_l, validation_data=([val, val_flow], val_l), epochs=config.Epochs)
+            test_loss_m4, test_acc_m4 = model4.evaluate([val, val_flow], val_l)
             print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
     print("Test alt model ......")
     opties2 = [['conc_conv', 'conc_dense'], ['avg', 'avg'], ['add', 'add'], ['sub', 'sub'], ['max', 'max'], ['min', 'min']]
     for j in range(0, len(opties)):
         model4 = alt_model(model3, model2, True, kernel_reg, fusions=opties2[j])
-
-        hist_model4, model4 = model4.fit(tr, tr_l, validation_data=(val, val_l), epochs=config.Epochs)
-        test_loss_m4, test_acc_m4 = model4.evaluate(val, val_l)
+        hist_model4 = model4.fit([tr_flow, tr], tr_l, validation_data=([val_flow, val], val_l), epochs=config.Epochs)
+        test_loss_m4, test_acc_m4 = model4.evaluate([val, val_flow], val_l)
         print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
     print("Done testing")
 

@@ -98,7 +98,7 @@ def readImgs(imgs, location: str, grayScale: bool):
     return lijst
 
 
-def augmentImages(imgs, highHue: bool, lowHue: bool, highSatur: bool, lowSatur: bool, highBright: bool,
+def augmentImages(imgs, lowHue: bool, highSatur: bool, lowSatur: bool, highBright: bool,
                   lowBright: bool, flip: bool, addInvert: bool, txRight: bool = True, txLeft: bool = True, blurImg: bool = True):
     blur = iaa.GaussianBlur(sigma=(0.9, 1.0)).to_deterministic()
     tx_rechts = iaa.TranslateX(px=(19, 20), mode="reflect").to_deterministic()
@@ -106,7 +106,7 @@ def augmentImages(imgs, highHue: bool, lowHue: bool, highSatur: bool, lowSatur: 
 
     lijst = []
     count = 1
-    for i in [flip, addInvert, highBright, lowBright, lowSatur, highSatur, highHue, lowHue, txLeft, txRight, blurImg]:
+    for i in [flip, addInvert, highBright, lowBright, lowSatur, highSatur, lowHue, txLeft, txRight, blurImg]:
         if i: count += 1
     for img in imgs:
         lijst.append(img)  # add original
@@ -140,9 +140,9 @@ def augmentImages(imgs, highHue: bool, lowHue: bool, highSatur: bool, lowSatur: 
         if lowSatur:
             ls = tf.image.adjust_saturation(img, am.low_satur)
             lijst.append(ls.numpy())
-        if highHue:
-            hh = tf.image.adjust_hue(img, am.high_hue)
-            lijst.append(hh.numpy())
+        # if highHue:
+        #     hh = tf.image.adjust_hue(img, am.high_hue)
+        #     lijst.append(hh.numpy())
         if lowHue:
             lh = tf.image.adjust_hue(img, am.low_hue)
             lijst.append(lh.numpy())
