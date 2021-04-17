@@ -1,12 +1,12 @@
-import tensorflow_addons as tfa
 import os
+
 import cv2
 import numpy as np
 import tensorflow as tf
 from imgaug import augmenters as iaa
 
-import config
 import augmentationMethods as am
+import config
 
 
 def cropImg(img, size):
@@ -98,30 +98,30 @@ def readImgs(imgs, location: str, grayScale: bool):
     return lijst
 
 
-def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, highBright: bool,
-                  lowBright: bool, flip: bool, addInvert: bool, imgaug: bool = True, addGray: bool = False):
+def augmentImages(imgs, highHue: bool, lowHue: bool, highSatur: bool, lowSatur: bool, highBright: bool,
+                  lowBright: bool, flip: bool, addInvert: bool, txRight: bool = True, txLeft: bool = True, blurImg: bool = True):
     blur = iaa.GaussianBlur(sigma=(0.9, 1.0)).to_deterministic()
-    tx_rechts = iaa.TranslateX(px=(19,20), mode="reflect").to_deterministic()
-    tx_links = iaa.TranslateX(px=(-19,-20), mode="reflect").to_deterministic()
+    tx_rechts = iaa.TranslateX(px=(19, 20), mode="reflect").to_deterministic()
+    tx_links = iaa.TranslateX(px=(-19, -20), mode="reflect").to_deterministic()
 
     lijst = []
     count = 1
-    for i in [flip, addInvert, addGray, highBright, lowBright, lowSatur, highSatur, shiftLeftRight, shiftLeftRight]:
+    for i in [flip, addInvert, highBright, lowBright, lowSatur, highSatur, highHue, lowHue, txLeft, txRight, blurImg]:
         if i: count += 1
-    if imgaug:
-        count += 3
     for img in imgs:
         lijst.append(img)  # add original
-        if imgaug:
+        if blurImg:
             blur_img = blur(image=img)
             lijst.append(blur_img)
+        if txRight:
             tx_rechts_img = tx_rechts(image=img)
             lijst.append(tx_rechts_img)
+        if txLeft:
             tx_links_img = tx_links(image=img)
             lijst.append(tx_links_img)
-        if addGray:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            lijst.append(gray)
+        # if addGray:
+        #     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        #     lijst.append(gray)
         if addInvert:
             invert = (255 - img)
             lijst.append(invert)
@@ -140,9 +140,13 @@ def augmentImages(imgs, shiftLeftRight: bool, highSatur: bool, lowSatur: bool, h
         if lowSatur:
             ls = tf.image.adjust_saturation(img, am.low_satur)
             lijst.append(ls.numpy())
+        if highHue:
+            hh = tf.image.adjust_hue(img, am.high_hue)
+            lijst.append(hh.numpy())
+        if lowHue:
+            lh = tf.image.adjust_hue(img, am.low_hue)
+            lijst.append(lh.numpy())
     return lijst, count
-
-
 
 # imgs = cv2.imread("J:\\Python computer vision\\Action_recognition-CV\\Data\\Stanford40\\ImagesConvCrop\\applauding_001.jpg",1)
 # cv2.imshow('img', imgs)
