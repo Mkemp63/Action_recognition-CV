@@ -1,6 +1,5 @@
-import tensorflow as tf
 import cv2
-import numpy as np
+import tensorflow as tf
 from imgaug import augmenters as iaa
 
 # Definitions
@@ -11,6 +10,8 @@ high_bright = 0.4
 low_bright = -0.4
 high_satur = 4
 low_satur = 0.5
+high_hue = .8
+low_hue = .4
 
 
 def blurImg(img, blur):
@@ -39,3 +40,7 @@ def adjustBrightnessImg(img, brightness):
 
 def adjustSaturation(img, saturation):
     return tf.image.adjust_saturation(img, saturation).numpy()
+
+
+def adjustHue(img, hue):
+    return tf.image.adjust_hue(img, hue).numpy()

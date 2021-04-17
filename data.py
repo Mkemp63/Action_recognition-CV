@@ -1,10 +1,10 @@
+import cv2
 import numpy as np
 from sklearn.model_selection import train_test_split
-import cv2
 
 import HelperFunctions as HF
-import config
 import OpticalFlow as OptF
+import config
 
 
 def train_test_stanford(printing: bool = False):
@@ -57,10 +57,38 @@ def train_tests_tv(printing: bool = False):
     return set_1, set_1_label, set_2, set_2_label  # testx, testy, trainx, trainy
 
 
-def getDataSet(files, location: str, grayScale: bool, labels, aug: bool = True):
+def getDataSet(files, location: str, grayScale: bool, labels, aug: bool = True, leave_one_out: bool = False,
+               leave_out_ind: int = 1):
     imgs = HF.readImgs(files, location, grayScale)
-    if aug:
-        augmImgs, count = HF.augmentImages(imgs, False, True, True, True, True, True, True)
+    if leave_one_out:
+        if leave_out_ind == 1:
+            augmImgs, count = HF.augmentImages(imgs, False, True, True, True, True, True, True, True, True, True)
+        elif leave_out_ind == 2:
+            augmImgs, count = HF.augmentImages(imgs, True, False, True, True, True, True, True, True, True, True)
+        elif leave_out_ind == 3:
+            augmImgs, count = HF.augmentImages(imgs, True, True, False, True, True, True, True, True, True, True)
+        elif leave_out_ind == 4:
+            augmImgs, count = HF.augmentImages(imgs, True, True, True, False, True, True, True, True, True, True)
+        elif leave_out_ind == 5:
+            augmImgs, count = HF.augmentImages(imgs, True, True, True, True, False, True, True, True, True, True)
+        elif leave_out_ind == 6:
+            augmImgs, count = HF.augmentImages(imgs, True, True, True, True, True, False, True, True, True, True)
+        elif leave_out_ind == 7:
+            augmImgs, count = HF.augmentImages(imgs, True, True, True, True, True, True, False, True, True, True)
+        elif leave_out_ind == 8:
+            augmImgs, count = HF.augmentImages(imgs, True, True, True, True, True, True, True, False, True, True)
+        elif leave_out_ind == 9:
+            augmImgs, count = HF.augmentImages(imgs, True, True, True, True, True, True, True, True, False, True)
+        elif leave_out_ind == 10:
+            augmImgs, count = HF.augmentImages(imgs, True, True, True, True, True, True, True, True, True, False)
+        elif leave_out_ind == 11:
+            augmImgs, count = HF.augmentImages(imgs, True, True, True, True, True, True, True, True, True, True)
+        else:
+            print("leave_out_ind invalid value, taking default augmentation")
+            augmImgs, count = HF.augmentImages(imgs, False, True, True, True, True, True, True, True, True, True)
+        newLabels = HF.double_labels(labels, count)
+    elif aug and not leave_one_out:
+        augmImgs, count = HF.augmentImages(imgs, False, True, True, True, True, True, True, True, True, True)
         newLabels = HF.double_labels(labels, count)
     else:
         return np.array(imgs), np.array(labels)
@@ -68,14 +96,15 @@ def getDataSet(files, location: str, grayScale: bool, labels, aug: bool = True):
     return np.array(augmImgs), np.array(newLabels)
 
 
-def getStanfordData():
+def getStanfordData(leave_one_out: bool = False, leave_out_ind: int = 1):
     stf_train_files, stf_train_labels_S, stf_test_files, stf_test_labels = train_test_stanford(False)
 
     uniqueLabels, dictionary = HF.getUniques(stf_test_labels)
     stf_train_labels_ind = [dictionary[lab] for lab in stf_train_labels_S]
     stf_test_labels_ind = [dictionary[lab] for lab in stf_test_labels]
 
-    imgs_train, labs_train = getDataSet(stf_train_files, config.STANF_CONV_CROP, False, stf_train_labels_ind, aug=True)
+    imgs_train, labs_train = getDataSet(stf_train_files, config.STANF_CONV_CROP, False, stf_train_labels_ind, aug=True,
+                                        leave_one_out=leave_one_out, leave_out_ind=leave_out_ind)
     imgs_test, labs_test = getDataSet(stf_test_files, config.STANF_CONV_CROP, False, stf_test_labels_ind, aug=False)
     # print(imgs_train.shape)
     # print(labs_train.shape)

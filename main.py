@@ -3,7 +3,6 @@ import os
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import sklearn
 import tensorflow as tf
 import tensorflow_addons as tfa
 from imgaug import augmenters as iaa
@@ -14,7 +13,7 @@ import HelperFunctions as HF
 import OpticalFlow as OptF
 import config
 import data
-
+import augmentationMethods as am
 
 def transfer_learn_model(model_path, new_output_layer, freeze: bool = False, lr=0.0001):
     old_model = models.load_model(model_path)
@@ -38,7 +37,8 @@ def transfer_learn_model(model_path, new_output_layer, freeze: bool = False, lr=
 
 
 def make_baseline_model(input_shape, hidden_layer_neurons, activation1='relu', activation2='relu', activation3='relu',
-                        optimizer='adam', conv_layers=2, filter_size=16, kernel_size=3, dropout=0.0, output_size=40,
+                        optimizer=tf.keras.optimizers.Adam(), conv_layers=2, filter_size=16, kernel_size=3, dropout=0.0,
+                        output_size=40,
                         filter_multiplier=1, dubbel_conv: bool = True, k_reg=None):
     model = models.Sequential()
     if kernel_size == 5 and conv_layers == 3:
@@ -95,7 +95,6 @@ def cyclical_learning_rate(initial_learning_rate, maximal_learning_rate, step_si
         clr = tfa.optimizers.Triangular2CyclicalLearningRate(initial_learning_rate=initial_learning_rate,
                                                              maximal_learning_rate=maximal_learning_rate,
                                                              step_size=step_size,
-                                                             scale_fn=scale_fn,
                                                              scale_mode=scale_mode)
     else:
         print("Wrong cyclical learn rate type supplied, resorting to default")
@@ -238,14 +237,14 @@ def test():
     ], random_order=True).to_deterministic()
 
     blur = iaa.GaussianBlur(sigma=(0, 1.5)).to_deterministic()
-    newImgs, labss = HF.getDataSet(["applauding_004.jpg"], config.STANF_CONV_CROP, False, [1])
+    newImgs, labss = data.getDataSet(["applauding_004.jpg"], config.STANF_CONV_CROP, False, [1])
     applauding = cv2.imread(config.STANF_CONV_CROP + "applauding_004.jpg", 1)
-    img_blur = blur(image=applauding)
-
+    #img_blur = blur(image=applauding)
+    img_hue = am.adjustHue(img=applauding, hue=-.5)
     # img = seq(images=np.array([applauding]))
     # print(type(img))
     # print(img.shape)
-    cv2.imshow("img", img_blur)
+    cv2.imshow("img", img_hue)
     cv2.waitKey(0)
     # for i in img:
     #     print(type(i))
@@ -261,7 +260,6 @@ def plot_val_train_loss(history, title, save: bool = False):
     plt.plot(history.history['val_loss'], label='validation loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    plt.ylim([0, 1])
     plt.legend(loc='lower right')
     plt.title(title)
     if save:
@@ -270,8 +268,8 @@ def plot_val_train_loss(history, title, save: bool = False):
 
 
 def plot_val_train_acc(history, title, save: bool = False):
-    plt.plot(history.history['acc'], label='accuracy')
-    plt.plot(history.history['val_acc'], label='validation accuracy')
+    plt.plot(history.history['accuracy'], label='accuracy')
+    plt.plot(history.history['val_accuracy'], label='validation accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.ylim([0, 1])
@@ -282,37 +280,65 @@ def plot_val_train_acc(history, title, save: bool = False):
     plt.show()
 
 
-def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, tv_train_imgs, tv_train_labels,
-                    tv_val_imgs, tv_val_labels, input_shape, kernel_reg):
-    # Make first model
+def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_val_imgs, tv_val_labels, input_shape, kernel_reg,
+                    leave_one_out: bool = False):
     print("Making the first model...")
     # Variabelen moeten wel aangepast worden waarschijnlijk
-    model_base = make_baseline_model(input_shape, kernel_size=3, optimizer='adam', hidden_layer_neurons=60,
-                                     activation3='softmax', conv_layers=3, filter_size=8, dropout=0.5,
-                                     dubbel_conv=True, filter_multiplier=2, kernel_reg=kernel_reg)
-    hist_base, model_base = model_base.fit(stanf_train, stanf_train_lab, validation_data=(stanf_test, stanf_test_lab),
-                                           epochs=config.Epochs, batch_size=config.Batch_size)
-    test_loss_base, test_acc_base = model_base.evaluate(stanf_test, stanf_test_lab)
-    print(f"Test acc: {test_acc_base} & loss: {test_loss_base}")
+    clr = cyclical_learning_rate(1e-4, 1e-3, step_size=4, scale_fn=lambda x: 1, scale_mode='cycle', type="triangle2")
+    model_base = make_baseline_model(input_shape, kernel_size=3, optimizer=tf.keras.optimizers.Adam(learning_rate=clr),
+                                     hidden_layer_neurons=60, activation3='softmax', conv_layers=3, filter_size=8,
+                                     dropout=0.5, dubbel_conv=True, filter_multiplier=2)
 
-    # Plot test loss and accuracy
-    plot_val_train_loss(hist_base, "Base model training and validation loss", save=True)
-    plot_val_train_acc(hist_base, "Base model training and validation accuracy", save=True)
+    if leave_one_out:
+        for i in range(1, 12):
+            if i == 1 or i == 2 or i == 10 or i == 11:
+                print(i)
+                model_current = models.clone_model(model_base)
+                model_current.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=clr),
+                                      loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                                      metrics=['accuracy'])
+
+                stanf_train, stanf_train_lab, stanf_test, stanf_test_lab = data.getStanfordData(leave_one_out=True,
+                                                                                                leave_out_ind=i)
+                stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stanf_train,
+                                                                                                  stanf_train_lab,
+                                                                                                  test_size=config.Validate_perc)
+
+                hist_base = model_current.fit(stanf_train, stanf_train_lab,
+                                                       validation_data=(stanf_test, stanf_test_lab),
+                                                       epochs=config.Epochs, batch_size=config.Batch_size)
+
+                test_loss_base, test_acc_base = model_current.evaluate(stanf_test, stanf_test_lab)
+                print(f"Test acc: {test_acc_base} & loss: {test_loss_base} for leave_out_ind {i}")
+
+                # Plot test loss and accuracy
+                plot_val_train_loss(hist_base, f"Base model {i} training and validation loss", save=True)
+                plot_val_train_acc(hist_base, f"Base model {i} training and validation accuracy", save=True)
+
+    else:
+        stanf_train, stanf_train_lab, stanf_test, stanf_test_lab = data.getStanfordData()
+        stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stanf_train, stanf_train_lab,
+                                                                                          test_size=config.Validate_perc)
+        hist_base, model_base = model_base.fit(stf_train_imgs, stf_train_labels,
+                                               validation_data=(stf_val_imgs, stf_val_labels),
+                                               epochs=config.Epochs, batch_size=config.Batch_size)
+        test_loss_base, test_acc_base = model_base.evaluate(stanf_test, stanf_test_lab)
+        print(f"Test acc: {test_acc_base} & loss: {test_loss_base}")
+
+        # Plot test loss and accuracy
+        plot_val_train_loss(hist_base, "Base model training and validation loss", save=True)
+        plot_val_train_acc(hist_base, "Base model training and validation accuracy", save=True)
 
     # Make second model, based on transfer learning
     print("Making the second model...")
-    if not os.path.isfile(config.MODELS + "TV_TL.h5"):
-        print("Model file not found, creating...")
-        tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
-        model_tl = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer, freeze=True)
-        hist_tl, model_tl = model_tl.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
+    tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
+    model_tl = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer, freeze=True)
+    hist_tl, model_tl = model_tl.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
                                          validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size)
-        model_tl.save(config.MODELS + "TV_TL.h5")
-        plot_val_train_loss(hist_tl, title="Transfer learn model training and validation loss", save=True)
-        plot_val_train_acc(hist_tl, title="Transfer model training and validation accuracy", save=True)
-    else:
-        print("Transfer learn model file located")
-        tl_model = models.load_model(config.MODELS + "TV_TL.h5")
+    model_tl.save(config.MODELS + "TV_TL.h5")
+    plot_val_train_loss(hist_tl, title="Transfer learn model training and validation loss", save=True)
+    plot_val_train_acc(hist_tl, title="Transfer model training and validation accuracy", save=True)
+
 
     # Moet nog ingevuld worden
     # model2 = ...
@@ -357,54 +383,51 @@ def main():
     # testOpticalFlow()
 
     # stf_trainset: whole training set (incl. val); stf_train_imgs: only training (excl val)
-    print("Get DataSet")
-    stf_trainset, stf_trainset_lab, stf_test, stf_test_lab = data.getStanfordData()
-    stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stf_trainset, stf_trainset_lab,
-                                                                                      test_size=config.Validate_perc)
-
-    # Function to train and make the four models
-    # makeModelsFinal(stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, input_shape)
+    # print("Get DataSet")
+    # stf_trainset, stf_trainset_lab, stf_test, stf_test_lab = data.getStanfordData()
+    # stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stf_trainset, stf_trainset_lab,
+    #                                                                                   test_size=config.Validate_perc)
 
     # Test the different forms of augmentation
-    # test()
+    #test()
 
     # Choice task cyclical learning rate scheduler
     # clr = cyclical_learning_rate(1e-4, 1e-3, step_size=10, scale_fn=lambda x: 1, scale_mode='cycle', type="cyclical")
-    print("start random search")
+    # print("start random search")
     # random_search(input_shape, stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, n_iter=10)
 
-    print("Make model")
+    # print("Make model")
     # model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax',
     #                             k_reg=tf.keras.regularizers.l2(0.01))
     # model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
     #                          validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
 
-    if not os.path.isfile(config.MODELS + "Baseline.h5"):
-        print("Model file not found, creating...")
-        model = make_baseline_model(input_shape, kernel_size=3, optimizer='adam', hidden_layer_neurons=60,
-                                    activation3='softmax', conv_layers=3, filter_size=8, dropout=0.5,
-                                    dubbel_conv=True, filter_multiplier=2)
+    # if not os.path.isfile(config.MODELS + "Baseline.h5"):
+    #     print("Model file not found, creating...")
+    #     model = make_baseline_model(input_shape, kernel_size=3, optimizer='adam', hidden_layer_neurons=60,
+    #                                 activation3='softmax', conv_layers=3, filter_size=8, dropout=0.5,
+    #                                 dubbel_conv=True, filter_multiplier=2)
+    #
+    #     model_result = model.fit(stf_trainset, stf_trainset_lab, validation_data=(stf_test, stf_test_lab),
+    #                              epochs=config.Epochs, batch_size=config.Batch_size)
+    #     model.save(config.MODELS + "Baseline.h5")
+    # else:
+    #     print("Model file located")
+    #     model = models.load_model(config.MODELS + "Baseline.h5")
 
-        model_result = model.fit(stf_trainset, stf_trainset_lab, validation_data=(stf_test, stf_test_lab),
-                                 epochs=config.Epochs, batch_size=config.Batch_size)
-        model.save(config.MODELS + "Baseline.h5")
-    else:
-        print("Model file located")
-        model = models.load_model(config.MODELS + "Baseline.h5")
-
-    y_pred = model.predict(stf_test)
-    y_pred = np.argmax(y_pred, axis=1)
-    confusion_matrix = sklearn.metrics.confusion_matrix(stf_test_lab, y_pred)
-    f = open("cf.txt", 'a')
-    p = ""
-    for row in confusion_matrix:
-        for cell in row:
-            p += str(cell) + "; "
-        p += "\n"
-    f.write(p)
-    f.close()
-    input()
-    test_loss, test_acc = test_model(model, stf_test, stf_test_lab)
+    # y_pred = model.predict(stf_test)
+    # y_pred = np.argmax(y_pred, axis=1)
+    # confusion_matrix = sklearn.metrics.confusion_matrix(stf_test_lab, y_pred)
+    # f = open("cf.txt", 'a')
+    # p = ""
+    # for row in confusion_matrix:
+    #     for cell in row:
+    #         p += str(cell) + "; "
+    #     p += "\n"
+    # f.write(p)
+    # f.close()
+    # input()
+    # test_loss, test_acc = test_model(model, stf_test, stf_test_lab)
 
     # Transfer learn to TV-HI data
     HF.take_middle_frame(config.TV_VIDEOS)
@@ -423,23 +446,27 @@ def main():
     # HF.convertAndCropImg(tv_test_files, config.TV_IMG, True, True, config.Image_size, config.TV_CONV_CROP)
     # HF.convertNew(tv_test_files, config.TV_IMG, config.Image_size, config.TV_CONV, config.TV_CONV_CROP)
 
-    newImgs, labss = HF.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
+    newImgs, labss = data.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
     tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels = train_test_split(newImgs, labss,
                                                                                   test_size=config.Validate_perc)
 
-    if not os.path.isfile(config.MODELS + "TV_TL.h5"):
-        print("Model file not found, creating...")
-        tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
-        tl_model = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer, freeze=True, lr=clr)
-        tl_model_result = tl_model.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
-                                       validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size)
-        tl_model.save(config.MODELS + "TV_TL.h5")
-    else:
-        print("Model file located")
-        tl_model = models.load_model(config.MODELS + "TV_TL.h5")
+    # Function to train and make the four models
+    makeModelsFinal(tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels, input_shape, kernel_reg=1,
+                    leave_one_out=True)
 
-    print("Do you want to start grid search? Press any key")
-    input()
+    # if not os.path.isfile(config.MODELS + "TV_TL.h5"):
+    #     print("Model file not found, creating...")
+    #     tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
+    #     tl_model = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer, freeze=True, lr=clr)
+    #     tl_model_result = tl_model.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
+    #                                    validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size)
+    #     tl_model.save(config.MODELS + "TV_TL.h5")
+    # else:
+    #     print("Model file located")
+    #     tl_model = models.load_model(config.MODELS + "TV_TL.h5")
+    #
+    # print("Do you want to start grid search? Press any key")
+    # input()
 
     # Run once to get the cropped images
     # HF.convertAndCropImg(stf_train_files, True, True, config.Image_size, config.STANF_CONV_CROP)
