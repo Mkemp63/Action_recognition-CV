@@ -115,6 +115,8 @@ def augmentFrame(img, augm_num):
         return am.adjustSaturation(img, am.high_satur)
     elif augm_num == 10:
         return am.adjustSaturation(img, am.low_satur)
+    elif augm_num == 11:
+        return am.adjustSaturation(img, am.low_hue)
 
 
 def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool, size: int = -1, augm_num: int = 0,
@@ -131,17 +133,21 @@ def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool,
     frame = transformFrame(first_frame, video_size[1], crop, size)
     prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     i = 1
+
+    extra = extra_i * int(((length-3)/numbOfFrames / 2))
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
         frame = transformFrame(frame, video_size[1], crop, size)
+        frame = augmentFrame(frame, augm_num)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # if addEffect:
         #     gray = tf.image.adjust_brightness(gray, -0.4).numpy()
-        gray = augmentFrame(gray, augm_num)
+        # OUD
+        # gray = augmentFrame(gray, augm_num)
 
-        if i == round((len(ans)/2+1)*every_I)+extra_i and len(ans) < 2*numbOfFrames:  # if i % every_I == 0:
+        if i == round((len(ans)/2+1)*every_I) - extra and len(ans) < 2*numbOfFrames:  # if i % every_I == 0:
             flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
             magnitude, angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
             ans.append(magnitude)
@@ -152,7 +158,7 @@ def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool,
 
     cap.release()
     if len(ans) != 2*numbOfFrames:
-        print(f"numb of frames: {length} vs {i} & every: {every_I}; {(length-1)/numbOfFrames}")
+        print(f"numb of frames: {length} vs {i} & every: {every_I}; {(length-1)/numbOfFrames};    {extra_i}, {extra}")
     return ans
 
 
@@ -209,9 +215,10 @@ def getVideosFlow(files, location: str, crop: bool, size: int,  count: int = 10)
 def getVideosFlow2(files, location: str, crop: bool, size: int,  count: int = 10,
                    extra_data: bool = False, augm: bool = False):
     ans = []
-    augmIndexes = [1, 2, 3, 5, 6, 7, 8, 9]  # 4 is grayscale
+    augmIndexes = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11]  # 4 is grayscale
     rondes = 2 if extra_data else 1
     for fileName in files:
+        print(fileName)
         for i in range(0, rondes):
             a = getOpticalFlowVideo(location, fileName, count, crop, size, extra_i=i)
             if len(a) != 2*count:
@@ -223,8 +230,9 @@ def getVideosFlow2(files, location: str, crop: bool, size: int,  count: int = 10
                     if len(a) != 2*count:
                         print(f"Length: {len(a)}")
                     ans.append(np.transpose(np.array(a), (1, 2, 0)))
-    aantal = rondes*len(augmIndexes) if augm else rondes
+    aantal = rondes*(len(augmIndexes)+1) if augm else rondes
     return np.array(ans), aantal
+
 
 
 # test()

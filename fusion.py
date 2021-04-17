@@ -114,9 +114,9 @@ def makeFusionModel(model_a, model_b, after_layer_type_list, aft_lay_n_a=-1, aft
 
 
 def standardModel4(modela, modelb, printen: bool, kernel_reg, fusions: list = []):
-    cut_off_layers = [layers.Dense, layers.Dense]
-    after_layer_N_a = -2    # i = na i van cut_off_layer[0]; -2 betekent: voor de laatste van cut_off_layer[0]
-    after_layer_N_b = -2    # i = na i van cut_off_layer[0]; -2 betekent: voor de laatste van cut_off_layer[1]
+    cut_off_layers = [layers.Dropout, layers.Dropout]
+    after_layer_N_a = 1    # i = na i van cut_off_layer[0]; -2 betekent: voor de laatste van cut_off_layer[0]
+    after_layer_N_b = 1    # i = na i van cut_off_layer[0]; -2 betekent: voor de laatste van cut_off_layer[1]
 
     aantal_fusion = 1
     fusion_types = ['conc_dense'] if len(fusions) < 1 else [fusions[0]]
@@ -183,7 +183,7 @@ def flatten_model(modela, modelb, printen: bool, kernel_reg, fusions: list = [])
 
 
 def probeerFusionOpties(model2, model3, printen: bool, train, train_l, kernel_reg=None):
-    opties = ['conc_conv', 'conc_dense' 'avg', 'add', 'sub', 'max', 'min']
+    opties = ['conc_dense' 'avg', 'add', 'sub', 'max', 'min']
     tr, tr_l, val, val_l = train_test_split(train, train_l, test_size=config.Validate_perc)
     for i in range(0, 2):
         for j in range(0, len(opties)):
@@ -194,13 +194,18 @@ def probeerFusionOpties(model2, model3, printen: bool, train, train_l, kernel_re
             test_loss_m4, test_acc_m4 = model4.evaluate(val, val_l)
             print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
     print("Test alt model ......")
+    opties2 = [['conc_conv', 'conc_dense'], ['avg', 'avg'], ['add', 'add'], ['sub', 'sub'], ['max', 'max'], ['min', 'min']]
     for j in range(0, len(opties)):
-        model4 = standardModel4(model3, model2, True, kernel_reg, fusions=[opties[j], opties[j]])
+        model4 = alt_model(model3, model2, True, kernel_reg, fusions=opties2[j])
 
         hist_model4, model4 = model4.fit(tr, tr_l, validation_data=(val, val_l), epochs=config.Epochs)
         test_loss_m4, test_acc_m4 = model4.evaluate(val, val_l)
         print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
     print("Done testing")
+
+
+def printNiks():
+    print()
 
 
 def testFusion():

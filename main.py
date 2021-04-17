@@ -55,7 +55,7 @@ def make_baseline_model(input_shape, hidden_layer_neurons, activation1='relu', a
     model.add(layers.MaxPooling2D((2, 2)))  # 54
     filter_size = int(filter_size * filter_multiplier)
     for i in range(conv_layers):
-        model.add(layers.Conv2D(filter_size * filter_multiplier, (kernel_size, kernel_size), activation=activation1,
+        model.add(layers.Conv2D(filter_size, (kernel_size, kernel_size), activation=activation1,
                                 kernel_regularizer=k_reg))
         model.add(layers.MaxPooling2D((2, 2)))
         filter_size = int(filter_size * filter_multiplier)
@@ -295,26 +295,33 @@ def hardNegativeMining(model, train, labels):
     return np.array(negatives), np.array(neg_labels)
 
 
-def testKernelReg(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, tv_train_imgs, tv_train_labels,
-                    tv_val_imgs, tv_val_labels, input_shape):
+def testKernelReg(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels, input_shape,
+                  flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames):
     opties = [-1, 0.001, 0.01, 0.1]
     for i in range(0, 4):
         kernel_regulariser = tf.keras.regularizers.l2(opties[i]) if i > 0 else None
         print(f"Testen met kernel regulariser value: {opties[i]}  <<-- (-1 = None)")
-        makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, tv_train_imgs, tv_train_labels,
-                    tv_val_imgs, tv_val_labels, input_shape, kernel_reg=kernel_regulariser)
+        makeModelsFinal(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels, input_shape,
+                        flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames, kernel_reg=kernel_regulariser,
+                        useVal=True)
     print("Testing Kernel regularisation is done!")
     return
 
 
-def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_val_imgs, tv_val_labels, input_shape, kernel_reg, leave_one_out: bool = False, test_fusions: bool = False):
+def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels, input_shape,
+                    flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames, kernel_reg=None,
+                    leave_one_out: bool = False, test_fusions: bool = False, useVal: bool = False):
+    if useVal:
+        # Splits de train in val en train set
+
+
     # Make first model
     print("Making the first model...")
     # Variabelen moeten wel aangepast worden waarschijnlijk
     clr = cyclical_learning_rate(1e-4, 1e-3, step_size=4, scale_fn=lambda x: 1, scale_mode='cycle', type="triangle2")
     model_base = make_baseline_model(input_shape, kernel_size=3, optimizer=tf.keras.optimizers.Adam(learning_rate=clr),
                                      hidden_layer_neurons=60, activation3='softmax', conv_layers=3, filter_size=8,
-                                     dropout=0.5, dubbel_conv=True, filter_multiplier=2)
+                                     dropout=0.5, dubbel_conv=True, filter_multiplier=2, k_reg=kernel_reg)
 
     if leave_one_out:
         for i in range(1, 12):
@@ -332,7 +339,7 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_val_imgs, tv_val_labels, 
                                                                                                   test_size=config.Validate_perc)
 
                 hist_base = model_current.fit(stanf_train, stanf_train_lab,
-                                                       validation_data=(stanf_test, stanf_test_lab),
+                                              validation_data=(stanf_test, stanf_test_lab),
                                                        epochs=config.Epochs, batch_size=config.Batch_size)
 
                 test_loss_base, test_acc_base = model_current.evaluate(stanf_test, stanf_test_lab)
@@ -346,6 +353,13 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_val_imgs, tv_val_labels, 
         stanf_train, stanf_train_lab, stanf_test, stanf_test_lab = data.getStanfordData()
         stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stanf_train, stanf_train_lab,
                                                                                           test_size=config.Validate_perc)
+        # if useTest:
+        #     hist_base, model_base = model_base.fit(stf_train_imgs, stf_train_labels,
+        #                                            validation_data=(stf_val_imgs, stf_val_labels),
+        #                                            epochs=config.Epochs, batch_size=config.Batch_size)
+        #     test_loss_base, test_acc_base = model_base.evaluate(stanf_test, stanf_test_lab)
+        #     print(f"Test acc: {test_acc_base} & loss: {test_loss_base}")
+        # else:
         hist_base, model_base = model_base.fit(stf_train_imgs, stf_train_labels,
                                                validation_data=(stf_val_imgs, stf_val_labels),
                                                epochs=config.Epochs, batch_size=config.Batch_size)
@@ -361,31 +375,33 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_val_imgs, tv_val_labels, 
     tv_output_layer = layers.Dense(4, activation="softmax", name="Dense_output")
     model_tl = transfer_learn_model(config.MODELS + "Baseline.h5", tv_output_layer, freeze=True)
     hist_tl, model_tl = model_tl.fit(tv_train_imgs, tv_train_labels, epochs=config.Epochs,
-                                         validation_data=(tv_val_imgs, tv_val_labels), batch_size=config.Batch_size)
+                                     validation_data=(tv_test_imgs, tv_test_labels), batch_size=config.Batch_size)
     model_tl.save(config.MODELS + "TV_TL.h5")
     plot_val_train_loss(hist_tl, title="Transfer learn model training and validation loss", save=True)
     plot_val_train_acc(hist_tl, title="Transfer model training and validation accuracy", save=True)
 
+    model2 = model_tl
 
-    # Moet nog ingevuld worden
-    # model2 = ...
-    # Plot test loss and accuracy
+
 
     # Make third model, etc..
     print("Making the third model...")
     """
     WAARDEN MOETEN GELIJK ZIJN AAN MODEL1, MAAR MAG NIET GETRAIND ZIJN VOLGENS MIJ.
     """
-    aantal_frames = 10
     input_shape3 = (config.Image_size, config.Image_size, aantal_frames * 2)
-    model3 = make_baseline_model(input_shape3, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
+    model3 = make_baseline_model(input_shape3, kernel_size=3, optimizer=tf.keras.optimizers.Adam(learning_rate=clr),
+                                 hidden_layer_neurons=60, activation3='softmax', conv_layers=3, filter_size=8,
+                                 dropout=0.5, dubbel_conv=True, filter_multiplier=2, k_reg=kernel_reg,
+                                 output_size=4)
     # ZONDER AUGMENTATION
-    flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=False, extra_fusion=False)
+    # flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=False, extra_fusion=False)
     # MET AUGMENTATION EN EXTRA DATA, ANDERE FRAMES GESELECTEERD
     # flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=True, extra_fusion=True)
 
-    hist_model3, model3 = model3.fit(flow_train, flow_train_l, epochs=config.Epochs, batch_size=config.Batch_size)
+    hist_model3 = model3.fit(flow_train, flow_train_l, epochs=config.Epochs, batch_size=config.Batch_size)
     test_loss_m3, test_acc_m3 = model3.evaluate(flow_test, flow_test_l)
+    print(f"Test acc: {test_acc_m3} & loss: {test_loss_m3}")
     # Plot test loss and accuracy
     plot_val_train_loss(hist_model3, "Model 3 training and validation loss", save=True)
     plot_val_train_acc(hist_model3, "Model 3 training and validation accuracy", save=True)
@@ -397,16 +413,14 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_val_imgs, tv_val_labels, 
     # WANT DAAR HOUDT HIJ NU GEEN REKENING MEE.
 
     print("Making the fourth model...")
-    # model4 = fusion.standardModel4(model2, model3, True, kernel_reg)
+    model4 = fusion.standardModel4(model2, model3, True, kernel_reg)
+    # Alternatief op basis van Assignment 5 Q&A  # model4 = fusion.standardModel4(model3, model2, True, kernel_reg)
 
-    # Alternatief op basis van Assignment 5 Q&A
-    # model4 = fusion.standardModel4(model3, model2, True, kernel_reg)
-
-    # train_data_model4 = [data_2, data_3]
-    # labels_model4 = .... zou hetzelfde moeten zijn als voor model2 en model3
-    # hist_model4, model4 = model4.fit(train_data_model4, labels_model4, epochs=config.Epochs)
-    # test_loss_m4, test_acc_m4 = model4.evaluate(stanf_test, stanf_test_lab)
-    # print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
+    train_data_model4 = [data_2, data_3]
+    labels_model4 = #....  # zou hetzelfde moeten zijn als voor model2 en model3
+    hist_model4 = model4.fit(train_data_model4, labels_model4, epochs=config.Epochs)
+    test_loss_m4, test_acc_m4 = model4.evaluate(, )
+    print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
 
     # Plot test loss and accuracy
     # plot_val_train_loss(hist_model4, "Complete model training and validation loss", save=True)
@@ -414,43 +428,82 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_val_imgs, tv_val_labels, 
 
     # Testen fusion
     if test_fusions:
+        fusion.printNiks() # Zodat hij niet weer de import fusion verwijdert
         fusion.probeerFusionOpties(model2, model3, True, train_data_model4, labels_model4)
 
     print()
     return
 
 
-def main():
-    input_shape = (config.Image_size, config.Image_size, 3)
-    # Test Optical Flow
-    # testOpticalFlow()
+def tempTest():
+    aantal_frames = 10
+    input_shape3 = (config.Image_size, config.Image_size, aantal_frames * 2)
+    model3 = make_baseline_model(input_shape3, kernel_size=3, hidden_layer_neurons=60, activation3='softmax',
+                                 conv_layers=3, filter_size=8, dropout=0.5, dubbel_conv=True, filter_multiplier=2,
+                                 k_reg=None, output_size=4)
+    # ZONDER AUGMENTATION
+    # flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=False, extra_fusion=False)
+    # MET AUGMENTATION EN EXTRA DATA, ANDERE FRAMES GESELECTEERD
+    flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=True, extra_fusion=False)
 
-    # stf_trainset: whole training set (incl. val); stf_train_imgs: only training (excl val)
-    # print("Get DataSet")
-    # stf_trainset, stf_trainset_lab, stf_test, stf_test_lab = data.getStanfordData()
-    # stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stf_trainset, stf_trainset_lab,
-    #                                                                                   test_size=config.Validate_perc)
+    hist_model3 = model3.fit(flow_train, flow_train_l, epochs=config.Epochs, batch_size=config.Batch_size)
+    test_loss_m3, test_acc_m3 = model3.evaluate(flow_test, flow_test_l)
+
+
+
+def main():
+    print("TEST 3")
+    tempTest()
+    print("Done!")
+    input()
+    input_shape = (config.Image_size, config.Image_size, 3)
+    aantal_frames = 10
+    flow_train, flow_train_l, flow_test, flow_test_l = data.getFusionData(aantal_frames, augm=True, extra_fusion=True)
+
+    # Test the different forms of augmentation
+    # test()
+
+    # Function to train and make the four models
+    # makeModelsFinal(stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, input_shape)
+
+    # Transfer learn to TV-HI data
+    HF.take_middle_frame(config.TV_VIDEOS)
+    tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = data.train_tests_tv()
+
+    tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = video_name_to_image_name(tv_test_files,
+                                                                                              tv_test_labels,
+                                                                                              tv_train_files,
+                                                                                              tv_train_labels)
+    uniqueLabels, dictionary = HF.getUniques(tv_test_labels)
+    tv_train_labels_ind = [dictionary[lab] for lab in tv_train_labels]
+    tv_test_labels_ind = [dictionary[lab] for lab in tv_test_labels]
+
+    tv_train, tv_train_l = data.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
+    tv_test, tv_test_l = data.getDataSet(tv_test_files, config.TV_CONV_CROP, False, tv_test_labels_ind, False)
+    # tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels = train_test_split(newImgs, labss,
+    #                                                                               test_size=config.Validate_perc)
+
+    # Function to train and make the four models
+    makeModelsFinal(tv_train, tv_train_l, tv_test, tv_test_l, input_shape,
+                    flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames, useVal=False)
+    # makeModelsFinal(tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels, input_shape, kernel_reg=1,
+    #                 leave_one_out=True)
 
     """ 
     ALS JE EEN KEER KERNEL REGULARISATION & FUSION MODELS WILT TESTEN
     """
-    testKernelReg()
-    # Function to train and make the four models
-    # makeModelsFinal(stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, input_shape)
+    allesTesten = False
+    if allesTesten:
+        print("Alles testen begint")
+        # stanf_train, stanf_train_lab, stanf_test, stanf_test_lab = data.getStanfordData()
+        print("Testing kernel regularisation")
+        testKernelReg(tv_train, tv_train_l, tv_test, tv_test_l, input_shape,
+                      flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames)
 
-    # Test the different forms of augmentation
-    #test()
+        print("Testing different fusion layers")
+        makeModelsFinal(tv_train, tv_train_l, tv_test, tv_test_l, input_shape,
+                        flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames, test_fusions=True, useVal=True)
 
-    # Choice task cyclical learning rate scheduler
-    # clr = cyclical_learning_rate(1e-4, 1e-3, step_size=10, scale_fn=lambda x: 1, scale_mode='cycle', type="cyclical")
-    # print("start random search")
-    # random_search(input_shape, stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, n_iter=10)
-
-    # print("Make model")
-    # model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax',
-    #                             k_reg=tf.keras.regularizers.l2(0.01))
-    # model_result = model.fit(stf_train_imgs, stf_train_labels, epochs=config.Epochs,
-    #                          validation_data=(stf_val_imgs, stf_val_labels), batch_size=config.Batch_size)
 
     # if not os.path.isfile(config.MODELS + "Baseline.h5"):
     #     print("Model file not found, creating...")
@@ -479,30 +532,8 @@ def main():
     # input()
     # test_loss, test_acc = test_model(model, stf_test, stf_test_lab)
 
-    # Transfer learn to TV-HI data
-    HF.take_middle_frame(config.TV_VIDEOS)
-    tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = data.train_tests_tv()
 
-    tv_test_files, tv_test_labels, tv_train_files, tv_train_labels = video_name_to_image_name(tv_test_files,
-                                                                                              tv_test_labels,
-                                                                                              tv_train_files,
-                                                                                              tv_train_labels)
-    uniqueLabels, dictionary = HF.getUniques(tv_test_labels)
-    tv_train_labels_ind = [dictionary[lab] for lab in tv_train_labels]
-    tv_test_labels_ind = [dictionary[lab] for lab in tv_test_labels]
 
-    # Run this once
-    # HF.convertAndCropImg(tv_train_files, config.TV_IMG, True, True, config.Image_size, config.TV_CONV_CROP)
-    # HF.convertAndCropImg(tv_test_files, config.TV_IMG, True, True, config.Image_size, config.TV_CONV_CROP)
-    # HF.convertNew(tv_test_files, config.TV_IMG, config.Image_size, config.TV_CONV, config.TV_CONV_CROP)
-
-    newImgs, labss = data.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
-    tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels = train_test_split(newImgs, labss,
-                                                                                  test_size=config.Validate_perc)
-
-    # Function to train and make the four models
-    makeModelsFinal(tv_train_imgs, tv_val_imgs, tv_train_labels, tv_val_labels, input_shape, kernel_reg=1,
-                    leave_one_out=True)
 
     # if not os.path.isfile(config.MODELS + "TV_TL.h5"):
     #     print("Model file not found, creating...")
