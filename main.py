@@ -12,6 +12,7 @@ from tensorflow.keras import layers, models
 
 import HelperFunctions as HF
 import OpticalFlow as OptF
+import fusion
 import config
 import data
 
@@ -282,8 +283,34 @@ def plot_val_train_acc(history, title, save: bool = False):
     plt.show()
 
 
+def hardNegativeMining(model, train, labels):
+    negatives = []
+    neg_labels = []
+    print(f"Length labels: {labels.shape[0]}")
+    for i in range(0, labels.shape[0]):
+        pred = np.argmax(model.predict(np.array([train[i]])), axis=1)
+        if i < 5:
+            print(f"Pred: {pred} vs labels: {labels[i]}")
+        if pred != labels[i]:
+            negatives.append(train[i])
+            neg_labels.append(labels[i])
+    return np.array(negatives), np.array(neg_labels)
+
+
+def testKernelReg(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, tv_train_imgs, tv_train_labels,
+                    tv_val_imgs, tv_val_labels, input_shape):
+    opties = [-1, 0.001, 0.01, 0.1]
+    for i in range(0, 4):
+        kernel_regulariser = tf.keras.regularizers.l2(opties[i]) if i > 0 else None
+        print(f"Testen met kernel regulariser value: {opties[i]}  <<-- (-1 = None)")
+        makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, tv_train_imgs, tv_train_labels,
+                    tv_val_imgs, tv_val_labels, input_shape, kernel_reg=kernel_regulariser)
+    print("Testing Kernel regularisation is done!")
+    return
+
+
 def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, tv_train_imgs, tv_train_labels,
-                    tv_val_imgs, tv_val_labels, input_shape, kernel_reg):
+                    tv_val_imgs, tv_val_labels, input_shape, kernel_reg, test_fusions: bool = False):
     # Make first model
     print("Making the first model...")
     # Variabelen moeten wel aangepast worden waarschijnlijk
@@ -334,8 +361,15 @@ def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, tv
     hist_model3, model3 = model3.fit(flow_train, flow_train_l, epochs=config.Epochs, batch_size=config.Batch_size)
     test_loss_m3, test_acc_m3 = model3.evaluate(flow_test, flow_test_l)
     # Plot test loss and accuracy
+    plot_val_train_loss(hist_model3, "Model 3 training and validation loss", save=True)
+    plot_val_train_acc(hist_model3, "Model 3 training and validation accuracy", save=True)
+
+
 
     """Make fourth model, etc.."""
+    # ALS WE EEN DROPOUT LAYER GEBRUIKEN IN MODEL 1/2/3 DAN MOET FUSION.STANDARDMODEL MISSCHIEN AANGEPAST WORDEN
+    # WANT DAAR HOUDT HIJ NU GEEN REKENING MEE.
+
     print("Making the fourth model...")
     # model4 = fusion.standardModel4(model2, model3, True, kernel_reg)
 
@@ -344,11 +378,20 @@ def makeModelsFinal(stanf_train, stanf_train_lab, stanf_test, stanf_test_lab, tv
 
     # train_data_model4 = [data_2, data_3]
     # labels_model4 = .... zou hetzelfde moeten zijn als voor model2 en model3
-    # model4.fit(train_data_model4, labels_model4, epochs=config.Epochs)
+    # hist_model4, model4 = model4.fit(train_data_model4, labels_model4, epochs=config.Epochs)
+    # test_loss_m4, test_acc_m4 = model4.evaluate(stanf_test, stanf_test_lab)
+    # print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
 
     # Plot test loss and accuracy
+    # plot_val_train_loss(hist_model4, "Complete model training and validation loss", save=True)
+    # plot_val_train_acc(hist_model4, "Complete model training and validation accuracy", save=True)
+
+    # Testen fusion
+    if test_fusions:
+        fusion.probeerFusionOpties(model2, model3, True, train_data_model4, labels_model4)
 
     print()
+    return
 
 
 def main():
@@ -362,6 +405,10 @@ def main():
     stf_train_imgs, stf_val_imgs, stf_train_labels, stf_val_labels = train_test_split(stf_trainset, stf_trainset_lab,
                                                                                       test_size=config.Validate_perc)
 
+    """ 
+    ALS JE EEN KEER KERNEL REGULARISATION & FUSION MODELS WILT TESTEN
+    """
+    testKernelReg()
     # Function to train and make the four models
     # makeModelsFinal(stf_trainset, stf_trainset_lab, stf_test, stf_test_lab, input_shape)
 
@@ -474,215 +521,3 @@ def main():
 if __name__ == '__main__':
     main()
 
-"""Using lot of data augmentation: augmentImages(imgs, False, True, False, True, True, True, True)
-model = make_baseline_model(input_shape, conv_layers=3, hidden_layer_neurons=60, activation3='softmax')
-Epoch 1/40
-675/675 [==============================] - 199s 294ms/step - loss: 3.9538 - accuracy: 0.0276 - val_loss: 3.6581 - val_accuracy: 0.0433
-Epoch 2/40
-675/675 [==============================] - 187s 278ms/step - loss: 3.6228 - accuracy: 0.0536 - val_loss: 3.4603 - val_accuracy: 0.0763
-Epoch 3/40
-675/675 [==============================] - 187s 276ms/step - loss: 3.3902 - accuracy: 0.1006 - val_loss: 3.2722 - val_accuracy: 0.1187
-Epoch 4/40
-675/675 [==============================] - 189s 280ms/step - loss: 3.1615 - accuracy: 0.1485 - val_loss: 3.1475 - val_accuracy: 0.1433
-Epoch 5/40
-675/675 [==============================] - 183s 271ms/step - loss: 2.9319 - accuracy: 0.2007 - val_loss: 2.9946 - val_accuracy: 0.2008
-Epoch 6/40
-675/675 [==============================] - 189s 280ms/step - loss: 2.6977 - accuracy: 0.2587 - val_loss: 2.8129 - val_accuracy: 0.2342
-Epoch 7/40
-675/675 [==============================] - 190s 281ms/step - loss: 2.4774 - accuracy: 0.3130 - val_loss: 2.7282 - val_accuracy: 0.2671
-Epoch 8/40
-675/675 [==============================] - 184s 272ms/step - loss: 2.2970 - accuracy: 0.3634 - val_loss: 2.6304 - val_accuracy: 0.2946
-Epoch 9/40
-675/675 [==============================] - 192s 284ms/step - loss: 2.0908 - accuracy: 0.4210 - val_loss: 2.5496 - val_accuracy: 0.3258
-Epoch 10/40
-675/675 [==============================] - 189s 280ms/step - loss: 1.9522 - accuracy: 0.4574 - val_loss: 2.5584 - val_accuracy: 0.3304
-Epoch 11/40
-675/675 [==============================] - 190s 281ms/step - loss: 1.8168 - accuracy: 0.4912 - val_loss: 2.4327 - val_accuracy: 0.3704
-Epoch 12/40
-675/675 [==============================] - 189s 280ms/step - loss: 1.6894 - accuracy: 0.5255 - val_loss: 2.3967 - val_accuracy: 0.3787
-Epoch 13/40
-675/675 [==============================] - 189s 280ms/step - loss: 1.6183 - accuracy: 0.5487 - val_loss: 2.3859 - val_accuracy: 0.4025
-Epoch 14/40
-675/675 [==============================] - 184s 273ms/step - loss: 1.5371 - accuracy: 0.5687 - val_loss: 2.2897 - val_accuracy: 0.4392
-Epoch 15/40
-675/675 [==============================] - 185s 273ms/step - loss: 1.4429 - accuracy: 0.5871 - val_loss: 2.3492 - val_accuracy: 0.4133
-Epoch 16/40
-675/675 [==============================] - 187s 278ms/step - loss: 1.3934 - accuracy: 0.5988 - val_loss: 2.3513 - val_accuracy: 0.4300
-Epoch 17/40
-675/675 [==============================] - 189s 280ms/step - loss: 1.3182 - accuracy: 0.6254 - val_loss: 2.3603 - val_accuracy: 0.4367
-Epoch 18/40
-675/675 [==============================] - 193s 286ms/step - loss: 1.2478 - accuracy: 0.6458 - val_loss: 2.2809 - val_accuracy: 0.4608
-Epoch 19/40
-675/675 [==============================] - 185s 274ms/step - loss: 1.2261 - accuracy: 0.6437 - val_loss: 2.3980 - val_accuracy: 0.4429
-Epoch 20/40
-675/675 [==============================] - 186s 275ms/step - loss: 1.1751 - accuracy: 0.6585 - val_loss: 2.4859 - val_accuracy: 0.4275
-"""
-
-# OUD
-"""
-model = make_baseline_model(input_shape, conv_layers=3, hidden_layers=0, hidden_layer_neurons=50)
-Epoch 1/40
-225/225 [==============================] - 32s 139ms/step - loss: 8.4073 - accuracy: 0.0202 - val_loss: 3.6886 - val_accuracy: 0.0312
-Epoch 2/40
-225/225 [==============================] - 29s 131ms/step - loss: 3.6884 - accuracy: 0.0273 - val_loss: 3.6886 - val_accuracy: 0.0312
-Epoch 3/40
-225/225 [==============================] - 29s 131ms/step - loss: 3.6868 - accuracy: 0.0272 - val_loss: 3.6876 - val_accuracy: 0.0325
-Epoch 4/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.6818 - accuracy: 0.0369 - val_loss: 3.6813 - val_accuracy: 0.0338
-Epoch 5/40
-225/225 [==============================] - 30s 133ms/step - loss: 3.6764 - accuracy: 0.0369 - val_loss: 3.6826 - val_accuracy: 0.0375
-Epoch 6/40
-225/225 [==============================] - 30s 131ms/step - loss: 3.6644 - accuracy: 0.0392 - val_loss: 3.6767 - val_accuracy: 0.0400
-Epoch 7/40
-225/225 [==============================] - 30s 134ms/step - loss: 3.6575 - accuracy: 0.0501 - val_loss: 3.6770 - val_accuracy: 0.0362
-Epoch 8/40
-225/225 [==============================] - 30s 131ms/step - loss: 3.6551 - accuracy: 0.0501 - val_loss: 3.6745 - val_accuracy: 0.0362
-Epoch 9/40
-225/225 [==============================] - 31s 139ms/step - loss: 3.6424 - accuracy: 0.0560 - val_loss: 3.6766 - val_accuracy: 0.0413
-Epoch 10/40
-225/225 [==============================] - 30s 131ms/step - loss: 3.6290 - accuracy: 0.0591 - val_loss: 3.6828 - val_accuracy: 0.0425
-Epoch 11/40
-225/225 [==============================] - 30s 134ms/step - loss: 3.6140 - accuracy: 0.0613 - val_loss: 3.6757 - val_accuracy: 0.0375
-Epoch 12/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.5918 - accuracy: 0.0709 - val_loss: 3.6717 - val_accuracy: 0.0388
-Epoch 13/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.5781 - accuracy: 0.0747 - val_loss: 3.7019 - val_accuracy: 0.0413
-Epoch 14/40
-225/225 [==============================] - 29s 129ms/step - loss: 3.5668 - accuracy: 0.0862 - val_loss: 3.6654 - val_accuracy: 0.0413
-Epoch 15/40
-225/225 [==============================] - 29s 129ms/step - loss: 3.5292 - accuracy: 0.0995 - val_loss: 3.6825 - val_accuracy: 0.0538
-Epoch 16/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.5111 - accuracy: 0.1017 - val_loss: 3.6665 - val_accuracy: 0.0562
-Epoch 17/40
-225/225 [==============================] - 30s 131ms/step - loss: 3.4900 - accuracy: 0.1054 - val_loss: 3.6774 - val_accuracy: 0.0463
-Epoch 18/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.4600 - accuracy: 0.1173 - val_loss: 3.6814 - val_accuracy: 0.0550
-Epoch 19/40
-225/225 [==============================] - 29s 128ms/step - loss: 3.4494 - accuracy: 0.1160 - val_loss: 3.6989 - val_accuracy: 0.0538
-Epoch 20/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.3921 - accuracy: 0.1321 - val_loss: 3.7093 - val_accuracy: 0.0512
-Epoch 21/40
-225/225 [==============================] - 29s 129ms/step - loss: 3.4120 - accuracy: 0.1257 - val_loss: 3.6852 - val_accuracy: 0.0650
-Epoch 22/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.3429 - accuracy: 0.1485 - val_loss: 3.7594 - val_accuracy: 0.0688
-Epoch 23/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.3382 - accuracy: 0.1553 - val_loss: 3.7070 - val_accuracy: 0.0625
-Epoch 24/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.2844 - accuracy: 0.1641 - val_loss: 3.7194 - val_accuracy: 0.0725
-Epoch 25/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.2309 - accuracy: 0.1768 - val_loss: 3.7003 - val_accuracy: 0.0650
-Epoch 26/40
-225/225 [==============================] - 29s 129ms/step - loss: 3.1842 - accuracy: 0.1917 - val_loss: 3.7584 - val_accuracy: 0.0637
-Epoch 27/40
-225/225 [==============================] - 29s 128ms/step - loss: 3.1915 - accuracy: 0.1920 - val_loss: 3.7197 - val_accuracy: 0.0750
-Epoch 28/40
-225/225 [==============================] - 29s 129ms/step - loss: 3.1861 - accuracy: 0.1949 - val_loss: 3.7509 - val_accuracy: 0.0712
-Epoch 29/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.1346 - accuracy: 0.2045 - val_loss: 3.7285 - val_accuracy: 0.0688
-Epoch 30/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.1148 - accuracy: 0.2180 - val_loss: 3.8844 - val_accuracy: 0.0712
-Epoch 31/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.0633 - accuracy: 0.2289 - val_loss: 3.7800 - val_accuracy: 0.0737
-Epoch 32/40
-225/225 [==============================] - 29s 129ms/step - loss: 3.0377 - accuracy: 0.2394 - val_loss: 3.8555 - val_accuracy: 0.0637
-Epoch 33/40
-225/225 [==============================] - 29s 129ms/step - loss: 2.9875 - accuracy: 0.2513 - val_loss: 3.8345 - val_accuracy: 0.0725
-Epoch 34/40
-225/225 [==============================] - 30s 132ms/step - loss: 2.9550 - accuracy: 0.2565 - val_loss: 3.9102 - val_accuracy: 0.0725
-Epoch 35/40
-225/225 [==============================] - 29s 130ms/step - loss: 2.9530 - accuracy: 0.2576 - val_loss: 3.8975 - val_accuracy: 0.0637
-Epoch 36/40
-225/225 [==============================] - 29s 129ms/step - loss: 2.9369 - accuracy: 0.2619 - val_loss: 3.8912 - val_accuracy: 0.0688
-Epoch 37/40
-225/225 [==============================] - 29s 130ms/step - loss: 2.8990 - accuracy: 0.2658 - val_loss: 3.9415 - val_accuracy: 0.0775
-Epoch 38/40
-225/225 [==============================] - 30s 132ms/step - loss: 2.8800 - accuracy: 0.2761 - val_loss: 3.9983 - val_accuracy: 0.0800
-Epoch 39/40
-225/225 [==============================] - 29s 128ms/step - loss: 2.8149 - accuracy: 0.2918 - val_loss: 3.9683 - val_accuracy: 0.0763
-Epoch 40/40
-225/225 [==============================] - 29s 130ms/step - loss: 2.7668 - accuracy: 0.3057 - val_loss: 4.0032 - val_accuracy: 0.0737
-"""
-
-"""
-model = make_baseline_model(input_shape, conv_layers=3,  hidden_layer_neurons=50)
-Epoch 1/40
-225/225 [==============================] - 29s 127ms/step - loss: 4.4177 - accuracy: 0.0248 - val_loss: 3.6912 - val_accuracy: 0.0237
-Epoch 2/40
-225/225 [==============================] - 26s 118ms/step - loss: 3.6853 - accuracy: 0.0313 - val_loss: 3.6827 - val_accuracy: 0.0325
-Epoch 3/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.6837 - accuracy: 0.0346 - val_loss: 3.6853 - val_accuracy: 0.0237
-Epoch 4/40
-225/225 [==============================] - 29s 130ms/step - loss: 3.6833 - accuracy: 0.0357 - val_loss: 3.6846 - val_accuracy: 0.0300
-Epoch 5/40
-225/225 [==============================] - 30s 135ms/step - loss: 3.6763 - accuracy: 0.0425 - val_loss: 3.6863 - val_accuracy: 0.0300
-Epoch 6/40
-225/225 [==============================] - 28s 123ms/step - loss: 3.6645 - accuracy: 0.0474 - val_loss: 3.6787 - val_accuracy: 0.0362
-Epoch 7/40
-225/225 [==============================] - 25s 112ms/step - loss: 3.6364 - accuracy: 0.0591 - val_loss: 3.6564 - val_accuracy: 0.0400
-Epoch 8/40
-225/225 [==============================] - 25s 112ms/step - loss: 3.6176 - accuracy: 0.0686 - val_loss: 3.6457 - val_accuracy: 0.0625
-Epoch 9/40
-225/225 [==============================] - 25s 112ms/step - loss: 3.5878 - accuracy: 0.0721 - val_loss: 3.6477 - val_accuracy: 0.0512
-Epoch 10/40
-225/225 [==============================] - 25s 112ms/step - loss: 3.5485 - accuracy: 0.0872 - val_loss: 3.6644 - val_accuracy: 0.0575
-Epoch 11/40
-225/225 [==============================] - 25s 112ms/step - loss: 3.5142 - accuracy: 0.1041 - val_loss: 3.6172 - val_accuracy: 0.0800
-Epoch 12/40
-225/225 [==============================] - 25s 112ms/step - loss: 3.4435 - accuracy: 0.1218 - val_loss: 3.5574 - val_accuracy: 0.1037
-Epoch 13/40
-225/225 [==============================] - 25s 111ms/step - loss: 3.4163 - accuracy: 0.1334 - val_loss: 3.6068 - val_accuracy: 0.0900
-Epoch 14/40
-225/225 [==============================] - 25s 111ms/step - loss: 3.3379 - accuracy: 0.1438 - val_loss: 3.5991 - val_accuracy: 0.0862
-Epoch 15/40
-225/225 [==============================] - 25s 111ms/step - loss: 3.2928 - accuracy: 0.1716 - val_loss: 3.6490 - val_accuracy: 0.0825
-Epoch 16/40
-225/225 [==============================] - 25s 112ms/step - loss: 3.2476 - accuracy: 0.1772 - val_loss: 3.6616 - val_accuracy: 0.0862
-Epoch 17/40
-225/225 [==============================] - 25s 111ms/step - loss: 3.1806 - accuracy: 0.1999 - val_loss: 3.6978 - val_accuracy: 0.0688
-Epoch 18/40
-225/225 [==============================] - 25s 111ms/step - loss: 3.1197 - accuracy: 0.2233 - val_loss: 3.7279 - val_accuracy: 0.0763
-Epoch 19/40
-225/225 [==============================] - 25s 111ms/step - loss: 3.0553 - accuracy: 0.2356 - val_loss: 3.7165 - val_accuracy: 0.0913
-Epoch 20/40
-225/225 [==============================] - 25s 111ms/step - loss: 3.0214 - accuracy: 0.2440 - val_loss: 3.7646 - val_accuracy: 0.0800
-Epoch 21/40
-225/225 [==============================] - 25s 111ms/step - loss: 2.9662 - accuracy: 0.2582 - val_loss: 3.8299 - val_accuracy: 0.0750
-Epoch 22/40
-225/225 [==============================] - 25s 111ms/step - loss: 2.8989 - accuracy: 0.2778 - val_loss: 3.7975 - val_accuracy: 0.0900
-Epoch 23/40
-225/225 [==============================] - 25s 111ms/step - loss: 2.8890 - accuracy: 0.2869 - val_loss: 3.8426 - val_accuracy: 0.0875
-Epoch 24/40
-225/225 [==============================] - 25s 111ms/step - loss: 2.8086 - accuracy: 0.3056 - val_loss: 3.9162 - val_accuracy: 0.0925
-Epoch 25/40
-225/225 [==============================] - 25s 111ms/step - loss: 2.7271 - accuracy: 0.3231 - val_loss: 3.9207 - val_accuracy: 0.0763
-Epoch 26/40
-225/225 [==============================] - 25s 111ms/step - loss: 2.6941 - accuracy: 0.3296 - val_loss: 3.8937 - val_accuracy: 0.1013
-Epoch 27/40
-225/225 [==============================] - 25s 111ms/step - loss: 2.7327 - accuracy: 0.3302 - val_loss: 3.9394 - val_accuracy: 0.0862
-Epoch 28/40
-225/225 [==============================] - 25s 113ms/step - loss: 2.6996 - accuracy: 0.3315 - val_loss: 4.0955 - val_accuracy: 0.0800
-Epoch 29/40
-225/225 [==============================] - 25s 111ms/step - loss: 2.6931 - accuracy: 0.3302 - val_loss: 4.0567 - val_accuracy: 0.0775
-Epoch 30/40
-225/225 [==============================] - 25s 112ms/step - loss: 2.6136 - accuracy: 0.3581 - val_loss: 4.1480 - val_accuracy: 0.0900
-Epoch 31/40
-225/225 [==============================] - 25s 111ms/step - loss: 2.5639 - accuracy: 0.3637 - val_loss: 4.0887 - val_accuracy: 0.0775
-Epoch 32/40
-225/225 [==============================] - 25s 112ms/step - loss: 2.5046 - accuracy: 0.3867 - val_loss: 4.1899 - val_accuracy: 0.0887
-Epoch 33/40
-225/225 [==============================] - 25s 112ms/step - loss: 2.5211 - accuracy: 0.3845 - val_loss: 4.2925 - val_accuracy: 0.0825
-Epoch 34/40
-225/225 [==============================] - 26s 115ms/step - loss: 2.4888 - accuracy: 0.3946 - val_loss: 4.3284 - val_accuracy: 0.0875
-Epoch 35/40
-225/225 [==============================] - 31s 138ms/step - loss: 2.4185 - accuracy: 0.4089 - val_loss: 4.2538 - val_accuracy: 0.0950
-Epoch 36/40
-225/225 [==============================] - 30s 131ms/step - loss: 2.4273 - accuracy: 0.4033 - val_loss: 4.3752 - val_accuracy: 0.0900
-Epoch 37/40
-225/225 [==============================] - 29s 131ms/step - loss: 2.4518 - accuracy: 0.3986 - val_loss: 4.4235 - val_accuracy: 0.0925
-Epoch 38/40
-225/225 [==============================] - 29s 129ms/step - loss: 2.3968 - accuracy: 0.4104 - val_loss: 4.3973 - val_accuracy: 0.0838
-Epoch 39/40
-225/225 [==============================] - 29s 130ms/step - loss: 2.3868 - accuracy: 0.4178 - val_loss: 4.6153 - val_accuracy: 0.0900
-Epoch 40/40
-225/225 [==============================] - 29s 128ms/step - loss: 2.3420 - accuracy: 0.4216 - val_loss: 4.5528 - val_accuracy: 0.0825
-"""

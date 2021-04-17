@@ -1,7 +1,9 @@
 import tensorflow as tf
 from tensorflow.keras import layers, models
+from sklearn.model_selection import train_test_split
 
 import test
+import config
 
 
 def countLayers(model, type):
@@ -111,13 +113,13 @@ def makeFusionModel(model_a, model_b, after_layer_type_list, aft_lay_n_a=-1, aft
         return
 
 
-def standardModel4(modela, modelb, printen: bool, kernel_reg: bool):
+def standardModel4(modela, modelb, printen: bool, kernel_reg, fusions: list = []):
     cut_off_layers = [layers.Dense, layers.Dense]
     after_layer_N_a = -2    # i = na i van cut_off_layer[0]; -2 betekent: voor de laatste van cut_off_layer[0]
     after_layer_N_b = -2    # i = na i van cut_off_layer[0]; -2 betekent: voor de laatste van cut_off_layer[1]
 
     aantal_fusion = 1
-    fusion_types = ['conc_dense']
+    fusion_types = ['conc_dense'] if len(fusions) < 1 else [fusions[0]]
 
     # exclusief output layer, die zit al in de functie
     path_a = [[layers.Dense(40, activation='relu', kernel_regularizer=kernel_reg)]]
@@ -125,18 +127,20 @@ def standardModel4(modela, modelb, printen: bool, kernel_reg: bool):
     new_model = makeFusionModel(modela, modelb, cut_off_layers, after_layer_N_a, after_layer_N_b,
                                 path_a, path_b,
                                 False, aantal_fusion, fusion_types)
-    if printen: print(new_model.summary())
-    return
+    if printen:
+        print(new_model.summary())
+    return new_model
 
 
-def alt_model(modela, modelb, printen: bool, kernel_reg: bool):
+def alt_model(modela, modelb, printen: bool, kernel_reg: bool, fusions: list = []):
     """Gebaseerd op rechter model assignment 5 Q&A"""
     cut_off_layers = [layers.Conv2D, layers.Conv2D]
     after_layer_N_a = -2  # i = na i van cut_off_layer[0];
     after_layer_N_b = -2  # i = na i van cut_off_layer[0];
 
     aantal_fusion = 2
-    fusion_types = ['conc_conv', 'conc_dense']  # concatenate, kan je aanpassen met iets anders
+    # fusion_types = ['conc_conv', 'conc_dense']  # concatenate, kan je aanpassen met iets anders
+    fusion_types = ['conc_conv', 'conc_dense'] if len(fusions) < 2 else [fusions[0], fusions[1]]
 
     # exclusief output layer, die zit al in de functie
     path_a = [[layers.MaxPooling2D((2, 2)),
@@ -152,8 +156,51 @@ def alt_model(modela, modelb, printen: bool, kernel_reg: bool):
     new_model = makeFusionModel(modela, modelb, cut_off_layers, after_layer_N_a, after_layer_N_b,
                                 path_a, path_b,
                                 False, aantal_fusion, fusion_types)
-    if printen: print(new_model.summary())
-    return
+    if printen:
+        print(new_model.summary())
+    return new_model
+
+
+def flatten_model(modela, modelb, printen: bool, kernel_reg, fusions: list = []):
+    cut_off_layers = [layers.Flatten, layers.Flatten]
+    after_layer_N_a = 1    # i = na i van cut_off_layer[0]; -2 betekent: voor de laatste van cut_off_layer[0]
+    after_layer_N_b = 1    # i = na i van cut_off_layer[0]; -2 betekent: voor de laatste van cut_off_layer[1]
+
+    aantal_fusion = 1
+    fusion_types = ['conc_dense'] if len(fusions) < 1 else [fusions[0]]
+    # fusion_types = ['conc_dense']
+
+    # exclusief output layer, die zit al in de functie
+    path_a = [[layers.Dense(100, activation='relu', kernel_regularizer=kernel_reg),
+               layers.Dense(40, activation='relu', kernel_regularizer=kernel_reg)]]
+    path_b = [[]]
+    new_model = makeFusionModel(modela, modelb, cut_off_layers, after_layer_N_a, after_layer_N_b,
+                                path_a, path_b,
+                                False, aantal_fusion, fusion_types)
+    if printen:
+        print(new_model.summary())
+    return new_model
+
+
+def probeerFusionOpties(model2, model3, printen: bool, train, train_l, kernel_reg=None):
+    opties = ['conc_conv', 'conc_dense' 'avg', 'add', 'sub', 'max', 'min']
+    tr, tr_l, val, val_l = train_test_split(train, train_l, test_size=config.Validate_perc)
+    for i in range(0, 2):
+        for j in range(0, len(opties)):
+            model4 = standardModel4(model2, model3, True, kernel_reg, fusions=[opties[j]]) if i == 0 else \
+                flatten_model(model2, model3, True, kernel_reg, fusions=[opties[j]])
+
+            hist_model4, model4 = model4.fit(tr, tr_l, validation_data=(val, val_l), epochs=config.Epochs)
+            test_loss_m4, test_acc_m4 = model4.evaluate(val, val_l)
+            print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
+    print("Test alt model ......")
+    for j in range(0, len(opties)):
+        model4 = standardModel4(model3, model2, True, kernel_reg, fusions=[opties[j], opties[j]])
+
+        hist_model4, model4 = model4.fit(tr, tr_l, validation_data=(val, val_l), epochs=config.Epochs)
+        test_loss_m4, test_acc_m4 = model4.evaluate(val, val_l)
+        print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
+    print("Done testing")
 
 
 def testFusion():
@@ -175,24 +222,23 @@ def testFusion():
     return
 
 
-modela = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
-modelb = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
-alt_model(modela, modelb, True, None) #standardModel4(modela, modelb, True)
-input()
+def testDingIets():
+    modela = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
+    modelb = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
+    alt_model(modela, modelb, True, None) #standardModel4(modela, modelb, True)
+    input()
 
+    testFusion()
 
-
-testFusion()
-
-model = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
-# for layer in model.layers:
-#     if isinstance(layer, layers.Conv2D):
-#         print("CONV!")
-#     print(layer)
-print(model.summary())
-input()
-m_new = makeSubModel(model, layers.Conv2D, -1, True)
-print(m_new.summary())
+    model = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
+    # for layer in model.layers:
+    #     if isinstance(layer, layers.Conv2D):
+    #         print("CONV!")
+    #     print(layer)
+    print(model.summary())
+    input()
+    m_new = makeSubModel(model, layers.Conv2D, -1, True)
+    print(m_new.summary())
 
 """
 _________________________________________________________________
