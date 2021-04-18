@@ -39,9 +39,7 @@ def checkValues(new_layers_a_list, new_layers_b_list, aantal_fusion, type_fusion
     elif len(new_layers_b_list) != len(new_layers_a_list):
         ans = f"a_list must have same size as b_list.\
          len a & b: {len(new_layers_a_list)} & {len(new_layers_a_list)}"
-    # for i in range(0, len(new_layers_a_list)):
-    #     if len(new_layers_a_list[i]) == 0:
-    #         ans = f""
+
     return ans
 
 
@@ -79,13 +77,6 @@ def makeFusionModel(model_a, model_b, after_layer_type_list, aft_lay_n_a=-1, aft
                 merge = layers.concatenate(axis=3, inputs=[a, b])
             elif fusion_now == 'conc_dense':
                 merge = layers.concatenate(axis=1, inputs=[a, b])
-            # DEZE CHECK HIERONDER IS BELANGRIJK !
-            # elif a.shape != b.shape:
-            #     print(
-            #         f"To be able to use {fusion_now}, a and b their outputs needs to be the same size: {a.shape} & {b.shape}")
-            #     print("Press key to end the method call and return nothing")
-            #     input()
-            #     return
             elif fusion_now == 'avg':
                 if a.shape != b.shape:
                     b = b if b.shape[1] < a.shape[1] else layers.Dense(a.shape[1], activation="relu")(b)
@@ -119,12 +110,10 @@ def makeFusionModel(model_a, model_b, after_layer_type_list, aft_lay_n_a=-1, aft
             for j in range(0, len(new_layers_b_list[i])):
                 b = new_layers_b_list[i][j](b)
         print(a.shape)
-        # x = output_layer(a)
         x = layers.Dense(4, activation='softmax', name='Dense_outputx')(a)
         model_new = models.Model(inputs=[part_a.input, part_b.input], outputs=x)
         model_new.compile(loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True), optimizer='adam',
                           metrics=['accuracy'])
-        # print(model_new.summary())
         return model_new
     else:
         print(correctNess)
@@ -187,7 +176,6 @@ def flatten_model(modela, modelb, printen: bool, kernel_reg, fusions: list = [])
 
     aantal_fusion = 1
     fusion_types = ['conc_dense'] if len(fusions) < 1 else [fusions[0]]
-    # fusion_types = ['conc_dense']
 
     # exclusief output layer, die zit al in de functie
     path_a = [[layers.Dense(100, activation='relu', kernel_regularizer=kernel_reg),
@@ -262,46 +250,8 @@ def testDingIets():
     testFusion()
 
     model = test.make_baseline_model2((112, 112, 3), activation3='softmax', conv_layers=3)
-    # for layer in model.layers:
-    #     if isinstance(layer, layers.Conv2D):
-    #         print("CONV!")
-    #     print(layer)
     print(model.summary())
     input()
     m_new = makeSubModel(model, layers.Conv2D, -1, True)
     print(m_new.summary())
 
-
-"""
-_________________________________________________________________
-Layer (type)                 Output Shape              Param #   
-=================================================================
-conv2d (Conv2D)              (None, 110, 110, 16)      448       
-_________________________________________________________________
-conv2d_1 (Conv2D)            (None, 108, 108, 16)      2320      
-_________________________________________________________________
-max_pooling2d (MaxPooling2D) (None, 54, 54, 16)        0         
-_________________________________________________________________
-conv2d_2 (Conv2D)            (None, 52, 52, 16)        2320      
-_________________________________________________________________
-max_pooling2d_1 (MaxPooling2 (None, 26, 26, 16)        0         
-_________________________________________________________________
-conv2d_3 (Conv2D)            (None, 24, 24, 16)        2320      
-_________________________________________________________________
-max_pooling2d_2 (MaxPooling2 (None, 12, 12, 16)        0         
-_________________________________________________________________
-conv2d_4 (Conv2D)            (None, 10, 10, 16)        2320      
-_________________________________________________________________
-max_pooling2d_3 (MaxPooling2 (None, 5, 5, 16)          0         
-_________________________________________________________________
-conv2d_5 (Conv2D)            (None, 3, 3, 16)          2320      
-_________________________________________________________________
-flatten (Flatten)            (None, 144)               0         
-_________________________________________________________________
-dense_1 (Dense)              (None, 60)                8700      
-_________________________________________________________________
-dropout (Dropout)            (None, 60)                0         
-_________________________________________________________________
-dense_2 (Dense)              (None, 40)                2440      
-=================================================================
-"""

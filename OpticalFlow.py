@@ -35,8 +35,6 @@ def calcOpticalFlow(location: str, file: str, write: bool, view: bool = False,
             break
         if view:
             cv2.imshow("input", frame)
-            # test = cropImg(frame, video_size[1])
-            # cv2.imshow("crop", test)
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
@@ -126,7 +124,6 @@ def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool,
     cap = cv2.VideoCapture(location + file)
     video_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
     length = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    # every_I = int(math.floor((length-1)/numbOfFrames))
     every_I = (length-3)/numbOfFrames
 
     ret, first_frame = cap.read()
@@ -142,10 +139,6 @@ def getOpticalFlowVideo(location: str, file: str, numbOfFrames: int, crop: bool,
         frame = transformFrame(frame, video_size[1], crop, size)
         frame = augmentFrame(frame, augm_num)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        # if addEffect:
-        #     gray = tf.image.adjust_brightness(gray, -0.4).numpy()
-        # OUD
-        # gray = augmentFrame(gray, augm_num)
 
         if i == round((len(ans)/2+1)*every_I) - extra and len(ans) < 2*numbOfFrames:  # if i % every_I == 0:
             flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
@@ -232,43 +225,3 @@ def getVideosFlow2(files, location: str, crop: bool, size: int,  count: int = 10
                     ans.append(np.transpose(np.array(a), (1, 2, 0)))
     aantal = rondes*(len(augmIndexes)+1) if augm else rondes
     return np.array(ans), aantal
-
-
-
-# test()
-# calcOpticalFlow("J:\\Python computer vision\\Action_recognition-CV\\Data\\TV-HI\\tv_human_interactions_videos\\",
-#                 "kiss_0045.avi", True, True)
-# convertVideos("tv_human_interactions_videos", config.Image_size)
-#
-# ans = getOpticalFlowVideo("J:\\Python computer vision\\Action_recognition-CV\\Data\\TV-HI\\tv_human_interactions_videos\\",
-#                            "kiss_0045.avi", 10, True, 112)
-# ans2 = getOpticalFlowVideo("J:\\Python computer vision\\Action_recognition-CV\\Data\\TV-HI\\tv_human_interactions_videos\\",
-#                            "kiss_0045.avi", 10, True, 112, addEffect=True)
-# thresh = 0.0001
-# maxDif = 0.0
-# for ind in range(0, len(ans)):
-#     differentOnes = 0
-#     averageDiff = 0
-#     for row in range(0, ans[ind].shape[0]):
-#         for col in range(0, ans[ind].shape[1]):
-#             a = ans[ind][row][col]
-#             b = ans2[ind][row][col]
-#             if a != b:
-#                 differentOnes += 1
-#                 df = abs(a - b)
-#                 averageDiff += df
-#                 # if df > thresh:
-#                 #     print(f"a: {a}, b: {b}")
-#                 if df > maxDif:
-#                     maxDif = df
-#     total = ans[ind].shape[0] * ans[ind].shape[1]
-#     print(f"Different: {differentOnes} with avg. {averageDiff/total}")
-# print(f"maxDif: {maxDif}")
-
-# print(type(ans))
-# print(type(ans[0]))
-# print(len(ans))
-# print(ans[0].shape)
-# twee = np.transpose(np.array(ans), (1,2,0))
-# print(type(twee))
-# print(twee.shape)

@@ -68,14 +68,12 @@ def splitTrain(files, labels):
         lab = removeNumberAndExt(files[i])
         if lab != prev_lab:
             aantalTrain = len(temp) - int(len(temp) * config.Validate_perc)
-            # print(f"Length for lab: {len(temp)} and number in Train: {aantalTrain}")
             for j in temp[:aantalTrain]:
                 train_imgs.append(files[j])
                 train_labels.append(labels[j])
             for j in temp[aantalTrain:]:
                 val_imgs.append(files[j])
                 val_labels.append(labels[j])
-
             # for new label
             prev_lab = lab
             temp = [i]
@@ -124,9 +122,6 @@ def augmentImages(imgs, lowHue: bool, highSatur: bool, lowSatur: bool, highBrigh
         if txLeft:
             tx_links_img = tx_links(image=img)
             lijst.append(tx_links_img)
-        # if addGray:
-        #     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        #     lijst.append(gray)
         if addInvert:
             invert = (255 - img)
             lijst.append(invert)
@@ -145,24 +140,7 @@ def augmentImages(imgs, lowHue: bool, highSatur: bool, lowSatur: bool, highBrigh
         if lowSatur:
             ls = tf.image.adjust_saturation(img, am.low_satur)
             lijst.append(ls.numpy())
-        # if highHue:
-        #     hh = tf.image.adjust_hue(img, am.high_hue)
-        #     lijst.append(hh.numpy())
         if lowHue:
             lh = tf.image.adjust_hue(img, am.low_hue)
             lijst.append(lh.numpy())
     return lijst, count
-
-# imgs = cv2.imread("J:\\Python computer vision\\Action_recognition-CV\\Data\\Stanford40\\ImagesConvCrop\\applauding_001.jpg",1)
-# cv2.imshow('img', imgs)
-# cv2.waitKey(0)
-# cv2.destroyAllWindows()
-# p = tf.keras.preprocessing.image.random_shift(imgs, 0.2, 0.0)
-# p = tf.keras.preprocessing.image.random_shear(imgs, 20)
-# p = tf.image.adjust_saturation(imgs, 0.5).numpy()
-# p = tf.image.adjust_hue(imgs, 0.1).numpy()
-# augmImgs, count = augmentImages([imgs], True, False, False, False, False, False, False)
-# p = tfa.image.translate(imgs, tf.constant([0.5, 0])).numpy()
-# cv2.imshow('img', p)
-# cv2.waitKey(0)
-# cv2.destroyAllWindows()

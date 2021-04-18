@@ -188,7 +188,6 @@ def loadStanfordData():
     # HF.convertAndCropImg(stf_test_files, True, True, config.Image_size, config.STANF_CONV_CROP)
     # HF.convertNew(stf_train_files, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
     # HF.convertNew(stf_test_files, config.Image_size, config.STANF_CONV, config.STANF_CONV_CROP)
-    # input()
     if config.Use_converted:
         cropped_ = True
         stf_train_imgs = np.array(readConvImages(stf_train_files, cropped=cropped_, grayScale=False))

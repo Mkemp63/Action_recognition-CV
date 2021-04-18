@@ -579,19 +579,30 @@ def flowDataTV():
     return tv_train, tv_train_l
 
 
+def arrayMessToString(antw):
+    ans = "["
+    for i in range(0, len(antw)):
+        if type(antw[i]) == list or type(antw[i]) == np.ndarray:
+            ans += arrayMessToString(antw[i]) + "\n"
+        else:
+            ans += str(antw[i])
+            if i < len(antw)-1:
+                ans += ", "
+    ans += "]"
+    return ans
+
 def printWeights(model, modelName: str):
     ans = ""
     i = 0
     for layer in model.layers:
-        ans += str(model.layers[i].get_weights()) + "\n\n"
-        print(model.layers[i].get_weights())
-        print("~~~~~~~~~~~~~~~~~~~~~~")
-        # print(model.layers[i].bias.numpy())
-        # print("~~~~~~~~~~~~~~~~~~~~~~")
-        # print(model.layers[i].bias_initializer)
-        # print("~~~~~~~~~~~~~~~~~~~~~~")
+        antw = model.layers[i].get_weights()
+        ans += f"Layer {i}\n"
+        if len(antw) == 0:
+            ans += str(antw) + "\n\n"
+        else:
+            ans += arrayMessToString(antw) + "\n\n"
         i += 1
-    f = open(modelName + ".txt", "w")
+    f = open(modelName+".txt", "w")
     f.write(ans)
     f.close()
 
