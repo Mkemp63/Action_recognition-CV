@@ -296,16 +296,16 @@ class TerminateOnBaseline(Callback):
 
 def make_flow_model(k_reg=None):
     model = models.Sequential()
-    model.add(layers.MaxPooling2D(input_shape=(112, 112, 20), pool_size=(2, 2), strides=(2, 2)))  # 56
-    model.add(layers.Conv2D(6, (5, 5), activation='relu', kernel_regularizer=k_reg))  # 52
-    model.add(layers.MaxPooling2D((2, 2)))  # 26
-    model.add(layers.Conv2D(12, (3, 3), activation='relu', kernel_regularizer=k_reg))  # 24
-    model.add(layers.MaxPooling2D((2, 2)))  # 12
-    model.add(layers.Conv2D(20, (3, 3), activation='relu', kernel_regularizer=k_reg))  # 10
-    model.add(layers.Conv2D(32, (3, 3), activation='relu', kernel_regularizer=k_reg))  # 8
-    model.add(layers.MaxPooling2D((2, 2)))  # 4
-    model.add(layers.Flatten())
-    model.add(layers.Dense(4, activation='softmax'))
+    model.add(layers.MaxPooling2D(input_shape=(112, 112, 20), pool_size=(2, 2), strides=(2, 2), name='pool1'))  # 56
+    model.add(layers.Conv2D(6, (5, 5), activation='relu', kernel_regularizer=k_reg, name='conv1'))  # 52
+    model.add(layers.MaxPooling2D((2, 2), name='pool2'))  # 26
+    model.add(layers.Conv2D(12, (3, 3), activation='relu', kernel_regularizer=k_reg, name='conv2'))  # 24
+    model.add(layers.MaxPooling2D((2, 2), name='pool3'))  # 12
+    model.add(layers.Conv2D(20, (3, 3), activation='relu', kernel_regularizer=k_reg, name='conv3'))  # 10
+    model.add(layers.Conv2D(32, (3, 3), activation='relu', kernel_regularizer=k_reg, name='conv4'))  # 8
+    model.add(layers.MaxPooling2D((2, 2), name='pool4'))  # 4
+    model.add(layers.Flatten(name="plat"))
+    model.add(layers.Dense(4, activation='softmax', name="denz1"))
     model.compile(optimizer='adam', loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
     print(model.summary())
@@ -327,10 +327,8 @@ def testenModel3():
 
     callbacks = [TerminateOnBaseline(monitor='val_accuracy', baseline=0.33, monitor2="accuracy", baseline2=0.33)]
 
-
     model = make_flow_model()
     model.save(config.MODELS + "EarlyStop3.h5")
-
 
     model.fit(flow_train, flow_train_l, epochs=config.Epochs, validation_data=(flow_test, flow_test_l),
               batch_size=config.Batch_size, callbacks=callbacks)
@@ -541,7 +539,6 @@ def makeModelsFinal(tv_train_imgs, tv_train_labels, tv_test_imgs, tv_test_labels
     plot_val_train_loss(hist_model3, "Model 3 training and validation loss", save=True)
     plot_val_train_acc(hist_model3, "Model 3 training and validation accuracy", save=True)
 
-
     print("Making the fourth model...")
     model4 = fusion.standardModel4(model2, model3, True, kernel_reg)
     # Alternatief op basis van Assignment 5 Q&A
@@ -582,8 +579,24 @@ def flowDataTV():
     return tv_train, tv_train_l
 
 
-def main():
+def printWeights(model, modelName: str):
+    ans = ""
+    i = 0
+    for layer in model.layers:
+        ans += str(model.layers[i].get_weights()) + "\n\n"
+        print(model.layers[i].get_weights())
+        print("~~~~~~~~~~~~~~~~~~~~~~")
+        # print(model.layers[i].bias.numpy())
+        # print("~~~~~~~~~~~~~~~~~~~~~~")
+        # print(model.layers[i].bias_initializer)
+        # print("~~~~~~~~~~~~~~~~~~~~~~")
+        i += 1
+    f = open(modelName + ".txt", "w")
+    f.write(ans)
+    f.close()
 
+
+def main():
     input_shape = (config.Image_size, config.Image_size, 3)
     aantal_frames = 10
     flow_train, flow_train_l, flow_test, flow_test_l = data.loadFlowData(False, True, threeD=False)
@@ -600,15 +613,27 @@ def main():
     tv_train, tv_train_l = data.getDataSet(tv_train_files, config.TV_CONV_CROP, False, tv_train_labels_ind)
     tv_test, tv_test_l = data.getDataSet(tv_test_files, config.TV_CONV_CROP, False, tv_test_labels_ind, False)
 
-    allesTesten = True
+    allesTesten = False
     if allesTesten:
         print("Alles testen begint")
 
         print("Testing kernel regularisation")
-
+        # testKernelReg(tv_train, tv_train_l, tv_test, tv_test_l, input_shape,
+        #               flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames)
         print("Testing different fusion layers")
         makeModelsFinal(tv_train, tv_train_l, tv_test, tv_test_l, input_shape,
                         flow_train, flow_train_l, flow_test, flow_test_l, aantal_frames, test_fusions=True, useVal=True)
+
+    print_weights = True
+    if print_weights:
+        model1 = tf.keras.models.load_model(config.MODELS + "Baseline.h5")
+        model2 = tf.keras.models.load_model(config.MODELS + "TV_TL.h5")
+        model3 = tf.keras.models.load_model(config.MODELS + "EarlyStop3.h5")
+        model4 = tf.keras.models.load_model(config.MODELS + "model4.h5")
+        printWeights(model1, "Baseline")
+        printWeights(model2, "Transfer Learn")
+        printWeights(model3, "Optical flow")
+        printWeights(model4, "Fusion")
 
 
 if __name__ == '__main__':

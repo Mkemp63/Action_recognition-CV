@@ -216,7 +216,7 @@ def probeerFusionOpties(model2, model3, printen: bool, train_frame, train_flow, 
                 flatten_model(model2, model3, True, kernel_reg, fusions=[opties[j]])
 
             hist_model4 = model4.fit([tr, tr_flow], tr_l, validation_data=([val, val_flow], val_l),
-                                     epochs=config.Epochs)
+                                     epochs=6)
             test_loss_m4, test_acc_m4 = model4.evaluate([val, val_flow], val_l)
             print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
     print("Test alt model ......")
@@ -224,7 +224,7 @@ def probeerFusionOpties(model2, model3, printen: bool, train_frame, train_flow, 
                ['min', 'min']]
     for j in range(0, len(opties2)):
         model4 = alt_model(model3, model2, True, kernel_reg, fusions=opties2[j])
-        hist_model4 = model4.fit([tr_flow, tr], tr_l, validation_data=([val_flow, val], val_l), epochs=config.Epochs)
+        hist_model4 = model4.fit([tr_flow, tr], tr_l, validation_data=([val_flow, val], val_l), epochs=6)
         test_loss_m4, test_acc_m4 = model4.evaluate([val_flow, val], val_l)
         print(f"Test acc: {test_acc_m4} & loss: {test_loss_m4}")
     print("Done testing")
