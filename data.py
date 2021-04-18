@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 import HelperFunctions as HF
 import OpticalFlow as OptF
 import config
+import os
 
 
 def train_test_stanford(printing: bool = False):
@@ -58,7 +59,7 @@ def train_tests_tv(printing: bool = False):
 
 
 def getDataSet(files, location: str, grayScale: bool, labels, aug: bool = True, leave_one_out: bool = False,
-               leave_out_ind: int = 1):
+               leave_out_ind: int = 1, fuse: bool = False):
     imgs = HF.readImgs(files, location, grayScale)
     if leave_one_out:
         if leave_out_ind == 1:
@@ -90,6 +91,10 @@ def getDataSet(files, location: str, grayScale: bool, labels, aug: bool = True, 
     elif aug and not leave_one_out:
         augmImgs, count = HF.augmentImages(imgs, True, True, True, True, True, True, True, True, True, True)
         newLabels = HF.double_labels(labels, count)
+    elif fuse:
+        augmImgs, count = HF.augmentImages(imgs, False, False, False, False, True, False, False, False, False, False)
+
+        newLabels = HF.double_labels(labels, count)
     else:
         return np.array(imgs), np.array(labels)
 
@@ -113,7 +118,43 @@ def getStanfordData(leave_one_out: bool = False, leave_out_ind: int = 1):
     return imgs_train, labs_train, imgs_test, labs_test
 
 
-def getFusionData(aantal_frames, augm: bool, extra_fusion: bool):
+
+
+def loadFlowData(augm: bool, extra_data: bool, threeD: bool):
+    opties = ["flow_train", "flow_train_l", "flow_test", "flow_test_l"]
+    extensie = ".npy"
+    antw = []
+    for i in range(0, 4):
+        extra = ""
+        current = opties[i]
+        if augm:
+            extra += '_aug'
+        if extra_data:
+            extra += '_ed'
+        if threeD:
+            extra += '_3d'
+        current += extra + extensie
+        if os.path.exists(config.CSV_LOC+current):
+            print(f"{current} exits! File will be loaded")
+            with open(config.CSV_LOC + current, 'rb') as f:
+                t = np.load(f)
+                antw.append(t)
+        else:
+            print(f"{current} does not exist. File will be made")
+            flow_train, flow_train_l, flow_test, flow_test_l = getFusionData(config.AantalFrames, augm=augm,
+                                                                             extra_fusion=extra_data, threeD=threeD)
+            print("Done getting fusion data")
+            # flow_train_l = np.array(flow_train_l)
+            # flow_test_l = np.array(flow_test_l)
+            HF.writeShit('flow_train'+extra+extensie, config.CSV_LOC, flow_train)
+            HF.writeShit('flow_train_l'+extra+extensie, config.CSV_LOC, flow_train_l)
+            HF.writeShit('flow_test'+extra+extensie, config.CSV_LOC, flow_test)
+            HF.writeShit('flow_test_l'+extra+extensie, config.CSV_LOC, flow_test_l)
+            return flow_train, flow_train_l, flow_test, flow_test_l
+    return antw[0], antw[1], antw[2], antw[3]
+
+
+def getFusionData(aantal_frames, augm: bool, extra_fusion: bool, threeD = False):
     tv_test_vid, tv_test_label, tv_tr_v, tv_tr_l = train_tests_tv(False)
     tv_tr_l = HF.convertLabel(tv_tr_l)
     tv_test_lab = HF.convertLabel(tv_test_label)

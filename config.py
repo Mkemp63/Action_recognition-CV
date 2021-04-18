@@ -31,3 +31,7 @@ Batch_size = 32
 Use_pretrained = True
 Test_performance = False
 Evaluate_fashion = False
+
+
+CSV_LOC = os.path.join(ROOT_DIR, 'Data\\Written\\')
+AantalFrames = 10

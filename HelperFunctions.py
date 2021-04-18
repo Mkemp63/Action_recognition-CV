@@ -84,6 +84,10 @@ def splitTrain(files, labels):
     return train_imgs, np.array(train_labels), val_imgs, np.array(val_labels)
 
 
+def writeShit(file, location, array):
+    np.save(location + file, array)
+
+
 def readImgs(imgs, location: str, grayScale: bool):
     lijst = []
     gray = 0 if grayScale else 1
@@ -99,7 +103,8 @@ def readImgs(imgs, location: str, grayScale: bool):
 
 
 def augmentImages(imgs, lowHue: bool, highSatur: bool, lowSatur: bool, highBright: bool,
-                  lowBright: bool, flip: bool, addInvert: bool, txRight: bool = True, txLeft: bool = True, blurImg: bool = True):
+                  lowBright: bool, flip: bool, addInvert: bool, txRight: bool = True, txLeft: bool = True,
+                  blurImg: bool = True):
     blur = iaa.GaussianBlur(sigma=(0.9, 1.0)).to_deterministic()
     tx_rechts = iaa.TranslateX(px=(19, 20), mode="reflect").to_deterministic()
     tx_links = iaa.TranslateX(px=(-19, -20), mode="reflect").to_deterministic()
